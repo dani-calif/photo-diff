@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from typing import Any, Mapping, Protocol, Sequence
 
@@ -7,13 +8,15 @@ import httpx
 
 from photo_diff.constants import (
     HTTP_CONTENT_TYPE_JSON,
-    HTTP_HEADER_AUTHORIZATION,
     HTTP_HEADER_CONTENT_TYPE,
+    HTTP_HEADER_SENDING_SYSTEM,
     KEY_DATA,
     KEY_EMBEDDING,
     KEY_IMAGE,
     KEY_VECTOR,
 )
+
+logger = logging.getLogger("photo-diff.embedding")
 
 
 class EmbeddingApiError(RuntimeError):
@@ -101,8 +104,9 @@ class EmbeddingApiResponse:
             if not isinstance(data_raw, list):
                 raise EmbeddingApiError("'data' field must be a list when present.")
             for item in data_raw:
-                if isinstance(item, Mapping):
-                    data.append(EmbeddingCandidate.from_mapping(item))
+                if not isinstance(item, Mapping):
+                    raise EmbeddingApiError("'data' items must be JSON objects.")
+                data.append(EmbeddingCandidate.from_mapping(item))
         return cls(root=root, data=data)
 
     def extract_embedding(self) -> list[float]:
@@ -123,12 +127,14 @@ class ImageEmbeddingService:
         self,
         api_url: str,
         *,
-        api_key: str | None = None,
+        sending_system: str,
         timeout_seconds: float = 30.0,
         transport: HttpTransport | None = None,
     ) -> None:
         self._api_url = api_url
-        self._api_key = api_key
+        self._sending_system = sending_system.strip()
+        if not self._sending_system:
+            raise ValueError("sending_system cannot be empty.")
         self._timeout_seconds = timeout_seconds
         self._transport = transport or HttpxTransport()
 
@@ -136,9 +142,14 @@ class ImageEmbeddingService:
         if not images_base64:
             raise ValueError("images_base64 cannot be empty.")
 
-        headers = {HTTP_HEADER_CONTENT_TYPE: HTTP_CONTENT_TYPE_JSON}
-        if self._api_key:
-            headers[HTTP_HEADER_AUTHORIZATION] = f"Bearer {self._api_key}"
+        logger.info(
+            "embedding images",
+            extra={"images_count": len(images_base64), "api_url": self._api_url},
+        )
+        headers = {
+            HTTP_HEADER_CONTENT_TYPE: HTTP_CONTENT_TYPE_JSON,
+            HTTP_HEADER_SENDING_SYSTEM: self._sending_system,
+        }
 
         output: list[list[float]] = []
         for image_b64 in images_base64:
@@ -155,6 +166,10 @@ class ImageEmbeddingService:
                 raise EmbeddingApiError(f"Failed to call embedding API: {exc}") from exc
 
             if response.status_code >= 400:
+                logger.info(
+                    "embedding api returned error",
+                    extra={"status_code": response.status_code, "api_url": self._api_url},
+                )
                 raise EmbeddingApiError(
                     f"Embedding API error {response.status_code}: {response.text[:300]}"
                 )

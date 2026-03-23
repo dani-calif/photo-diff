@@ -2,16 +2,12 @@ from __future__ import annotations
 
 import math
 
-# App metadata and routes
-APP_TITLE = "photo-diff"
+APP_TITLE = "tile-fetcher"
 APP_VERSION = "0.1.0"
-ROUTE_HEALTH = "/health"
-ROUTE_COMPARE_RAW_IMAGES = "/compare-raw-images"
-ROUTE_COMPARE_POINT = "/compare-point"
-UVICORN_APP_FACTORY = "photo_diff.app:create_app_from_env"
-SETTINGS_ENV_PREFIX = "PHOTO_DIFF_"
+ROUTE_FETCH_TILES = "/tiles/by-point"
+UVICORN_APP_FACTORY = "tile_fetcher.app:create_app_from_env"
+SETTINGS_ENV_PREFIX = "TILE_FETCHER_"
 
-# Defaults
 DEFAULT_TIMEOUT_SECONDS = 30.0
 DEFAULT_ROTATION_SAFE_EXPAND_FACTOR = math.sqrt(2.0)
 DEFAULT_TILE_EXPAND_FACTOR = DEFAULT_ROTATION_SAFE_EXPAND_FACTOR
@@ -20,26 +16,21 @@ DEFAULT_IMAGE_PROVIDER_LIGHT_PATH = "/image/wms/light"
 DEFAULT_PROJECTION_MAPPER_G2I_PATH = "/image/g2i"
 DEFAULT_PROJECTION_MAPPER_I2G_PATH = "/image/i2g"
 DEFAULT_UVICORN_HOST = "127.0.0.1"
-DEFAULT_UVICORN_PORT = 8000
+DEFAULT_UVICORN_PORT = 8010
 DEFAULT_UVICORN_RELOAD = False
 
-# HTTP
-HTTP_SCHEME_HTTP = "http://"
-HTTP_SCHEME_HTTPS = "https://"
 HTTP_CONTENT_TYPE_JSON = "application/json"
 HTTP_HEADER_CONTENT_TYPE = "Content-Type"
-HTTP_HEADER_SENDING_SYSTEM = "SendingSystem"
+HTTP_SCHEME_HTTP = "http://"
+HTTP_SCHEME_HTTPS = "https://"
 
-# JSON payload keys
-KEY_IMAGE = "image"
-KEY_EMBEDDING = "embedding"
-KEY_VECTOR = "vector"
+KEY_AZIMUTH = "azimuth"
+KEY_BBOX = "bbox"
 KEY_DATA = "data"
 KEY_IMAGE_ID = "image_id"
-KEY_BBOX = "bbox"
-KEY_URL = "url"
-KEY_AZIMUTH = "azimuth"
-KEY_LON = "lon"
+KEY_IMAGES = "images"
 KEY_LAT = "lat"
+KEY_LON = "lon"
+KEY_URL = "url"
 KEY_X = "x"
 KEY_Y = "y"

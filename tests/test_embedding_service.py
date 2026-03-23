@@ -52,7 +52,7 @@ class ImageEmbeddingServiceTests(unittest.IsolatedAsyncioTestCase):
 
         service = ImageEmbeddingService(
             api_url="https://api.example.com/embed/image",
-            api_key="secret",
+            sending_system="unit-test",
             timeout_seconds=9.0,
             transport=transport,
         )
@@ -67,7 +67,7 @@ class ImageEmbeddingServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(first_call["timeout"], 9.0)
         self.assertEqual(
             first_call["headers"],
-            {"Content-Type": "application/json", "Authorization": "Bearer secret"},
+            {"Content-Type": "application/json", "SendingSystem": "unit-test"},
         )
         self.assertEqual(first_call["json"], {"image": "b64-a"})
 
@@ -81,6 +81,7 @@ class ImageEmbeddingServiceTests(unittest.IsolatedAsyncioTestCase):
 
         service = ImageEmbeddingService(
             api_url="https://api.example.com/embed/image",
+            sending_system="unit-test",
             transport=transport,
         )
 

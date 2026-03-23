@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import unittest
 from dataclasses import dataclass
+from typing import Sequence
 
 from photo_diff.services.comparison import (
     CompareImageMatrixRequest,
@@ -15,8 +16,8 @@ class _FakeEmbeddingService:
     embeddings: list[list[float]]
     calls: list[list[str]]
 
-    async def embed_images(self, image_refs: list[str]) -> list[list[float]]:
-        self.calls.append(image_refs)
+    async def embed_images(self, images_base64: Sequence[str]) -> list[list[float]]:
+        self.calls.append(list(images_base64))
         return self.embeddings
 
 
@@ -25,8 +26,8 @@ class _FakeSimilarityService:
     result: float
     calls: list[tuple[list[float], list[float]]]
 
-    def cosine_similarity(self, vector_a: list[float], vector_b: list[float]) -> float:
-        self.calls.append((vector_a, vector_b))
+    def cosine_similarity(self, vector_a: Sequence[float], vector_b: Sequence[float]) -> float:
+        self.calls.append((list(vector_a), list(vector_b)))
         return self.result
 
 

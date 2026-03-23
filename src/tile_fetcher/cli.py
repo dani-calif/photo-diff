@@ -6,8 +6,8 @@ from typing import TextIO
 import uvicorn
 from pydantic import ValidationError
 
-from photo_diff.constants import UVICORN_APP_FACTORY
-from photo_diff.settings import load_settings
+from tile_fetcher.constants import UVICORN_APP_FACTORY
+from tile_fetcher.settings import load_settings
 
 
 def main(

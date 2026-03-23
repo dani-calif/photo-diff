@@ -1,32 +1,32 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import asdict
 
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
-from photo_diff.config import AppSettings
 from photo_diff.constants import (
     APP_TITLE,
     APP_VERSION,
-    DEFAULT_AERIAL_TARGET_SIZE_RATIO,
-    DEFAULT_TIMEOUT_SECONDS,
     ROUTE_COMPARE_POINT,
     ROUTE_COMPARE_RAW_IMAGES,
     ROUTE_HEALTH,
 )
-from photo_diff.image_input import (
-    AerialFetchConfig,
-    load_aerial_images_by_ids_at_geopoint_as_base64,
-    normalize_image_base64,
-)
-from photo_diff.services.comparison import (
-    CompareImageMatrixRequest,
-    CompareImagesRequest,
-    ImageComparisonService,
-)
+from photo_diff.services.comparison import ImageComparisonService, ImageComparisonUseCase
 from photo_diff.services.embedding import EmbeddingApiError, ImageEmbeddingService
+from photo_diff.services.service import PhotoDiffService, PhotoDiffUseCase
 from photo_diff.services.similarity import CosineSimilarityService
+from photo_diff.settings import AppSettings, load_settings
+from tile_fetcher import (
+    TileFetchError,
+    TileFetchService,
+    build_http_image_provider,
+    build_http_projection_mapper,
+)
+from tile_fetcher.http import HttpxGetClient
+
+logger = logging.getLogger("photo-diff.app")
 
 
 class CompareImagesPayload(BaseModel):
@@ -34,33 +34,27 @@ class CompareImagesPayload(BaseModel):
     image_b: str = Field(min_length=1)
 
 
-class CompareImageMatrixPayload(BaseModel):
+class ComparePointPayload(BaseModel):
     image_ids: list[str] = Field(min_length=2)
     lon: float
     lat: float
+    buffer_size_meters: float = Field(gt=0.0)
+    north_aligned: bool = True
 
 
 def create_app(
     *,
     settings: AppSettings | None = None,
-    comparison_service: ImageComparisonService | None = None,
+    photo_diff_service: PhotoDiffUseCase | None = None,
+    comparison_service: ImageComparisonUseCase | None = None,
+    tile_fetch_service: TileFetchService | None = None,
 ) -> FastAPI:
     app = FastAPI(title=APP_TITLE, version=APP_VERSION)
-    app_settings = settings
-    if app_settings is None and comparison_service is None:
-        app_settings = AppSettings.from_overrides()
-
-    service = comparison_service or _build_image_comparison_service(
-        _require_settings(app_settings)
-    )
-    aerial_config = _build_aerial_config(app_settings)
-    timeout_seconds = (
-        app_settings.timeout_seconds if app_settings is not None else DEFAULT_TIMEOUT_SECONDS
-    )
-    target_size_ratio = (
-        app_settings.aerial_target_size_ratio
-        if app_settings is not None
-        else DEFAULT_AERIAL_TARGET_SIZE_RATIO
+    app_settings = settings or load_settings()
+    service = photo_diff_service or _build_photo_diff_service(
+        settings=app_settings,
+        comparison_service=comparison_service,
+        tile_fetch_service=tile_fetch_service,
     )
 
     @app.get(ROUTE_HEALTH)
@@ -69,34 +63,39 @@ def create_app(
 
     @app.post(ROUTE_COMPARE_RAW_IMAGES)
     async def compare_raw_images(payload: CompareImagesPayload) -> dict[str, object]:
+        logger.info("compare_raw_images request")
         try:
-            request = CompareImagesRequest(
-                image_a=normalize_image_base64(payload.image_a),
-                image_b=normalize_image_base64(payload.image_b),
+            result = await service.compare_raw_images(
+                image_a=payload.image_a,
+                image_b=payload.image_b,
             )
-            result = await service.compare_images(request)
         except (EmbeddingApiError, ValueError, KeyError, TypeError) as exc:
+            logger.info("compare_raw_images failed", extra={"error": str(exc)})
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         return asdict(result)
 
     @app.post(ROUTE_COMPARE_POINT)
-    async def compare_point(payload: CompareImageMatrixPayload) -> dict[str, object]:
+    async def compare_point(payload: ComparePointPayload) -> dict[str, object]:
+        logger.info(
+            "compare_point request",
+            extra={
+                "image_ids_count": len(payload.image_ids),
+                "lon": payload.lon,
+                "lat": payload.lat,
+                "buffer_size_meters": payload.buffer_size_meters,
+                "north_aligned": payload.north_aligned,
+            },
+        )
         try:
-            images_base64 = await load_aerial_images_by_ids_at_geopoint_as_base64(
+            result = await service.compare_point(
                 image_ids=payload.image_ids,
                 lon=payload.lon,
                 lat=payload.lat,
-                timeout_seconds=timeout_seconds,
-                target_size_ratio=target_size_ratio,
-                aerial_config=aerial_config,
+                buffer_size_meters=payload.buffer_size_meters,
+                north_aligned=payload.north_aligned,
             )
-            result = await service.compare_image_matrix(
-                CompareImageMatrixRequest(
-                    image_ids=payload.image_ids,
-                    images=images_base64,
-                )
-            )
-        except (EmbeddingApiError, ValueError, KeyError, TypeError) as exc:
+        except (EmbeddingApiError, TileFetchError, ValueError, KeyError, TypeError) as exc:
+            logger.info("compare_point failed", extra={"error": str(exc)})
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         return asdict(result)
 
@@ -107,45 +106,43 @@ def create_app_from_env() -> FastAPI:
     return create_app()
 
 
-# Backward-compatible aliases.
-def create_api_app(
+def _build_photo_diff_service(
     *,
-    settings: AppSettings | None = None,
-    comparison_app: ImageComparisonService | None = None,
-) -> FastAPI:
-    return create_app(settings=settings, comparison_service=comparison_app)
-
-
-def create_api_app_from_env() -> FastAPI:
-    return create_app_from_env()
+    settings: AppSettings,
+    comparison_service: ImageComparisonUseCase | None = None,
+    tile_fetch_service: TileFetchService | None = None,
+) -> PhotoDiffUseCase:
+    return PhotoDiffService(
+        comparison_service=comparison_service or _build_image_comparison_service(settings),
+        tile_fetch_service=tile_fetch_service or _build_tile_fetch_service(settings),
+    )
 
 
 def _build_image_comparison_service(settings: AppSettings) -> ImageComparisonService:
     embedding_service = ImageEmbeddingService(
         api_url=settings.api_url,
-        api_key=settings.api_key,
+        sending_system=settings.sending_system,
         timeout_seconds=settings.timeout_seconds,
     )
     similarity_service = CosineSimilarityService()
     return ImageComparisonService(embedding_service, similarity_service)
 
 
-def _build_aerial_config(settings: AppSettings | None) -> AerialFetchConfig | None:
-    if settings is None:
-        return None
-    if not settings.aerial_api_url:
-        return None
-
-    return AerialFetchConfig(
-        api_base_url=settings.aerial_api_url,
-        expand_factor=settings.aerial_expand_factor,
-        wms_geo_path=settings.aerial_wms_geo_path,
-        wms_light_path=settings.aerial_wms_light_path,
-        g2i_path=settings.aerial_g2i_path,
+def _build_tile_fetch_service(settings: AppSettings) -> TileFetchService:
+    http_client = HttpxGetClient()
+    return TileFetchService(
+        image_provider=build_http_image_provider(
+            api_base_url=settings.tile_api_base_url,
+            geo_path=settings.tile_image_provider_geo_path,
+            light_path=settings.tile_image_provider_light_path,
+            http_client=http_client,
+        ),
+        projection_mapper=build_http_projection_mapper(
+            api_base_url=settings.tile_api_base_url,
+            g2i_path=settings.tile_projection_mapper_g2i_path,
+            i2g_path=settings.tile_projection_mapper_i2g_path,
+            http_client=http_client,
+        ),
+        timeout_seconds=settings.timeout_seconds,
+        expand_factor=settings.tile_expand_factor,
     )
-
-
-def _require_settings(settings: AppSettings | None) -> AppSettings:
-    if settings is None:
-        raise ValueError("App settings are required to build the default comparison service.")
-    return settings

@@ -20,10 +20,12 @@ class CliTests(unittest.TestCase):
         with patch.dict(
             os.environ,
             {
-                "EMBEDDING_API_URL": "https://api.example.com/embed/image",
-                "UVICORN_HOST": "0.0.0.0",
-                "UVICORN_PORT": "9000",
-                "UVICORN_RELOAD": "true",
+                "PHOTO_DIFF_API_URL": "https://api.example.com/embed/image",
+                "PHOTO_DIFF_SENDING_SYSTEM": "photo-diff-tests",
+                "PHOTO_DIFF_TILE_API_BASE_URL": "https://imagery.example.com",
+                "PHOTO_DIFF_HOST": "0.0.0.0",
+                "PHOTO_DIFF_PORT": "9000",
+                "PHOTO_DIFF_RELOAD": "true",
             },
             clear=True,
         ):

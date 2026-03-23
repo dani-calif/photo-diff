@@ -18,6 +18,7 @@ dependencies = [
 
 [project.scripts]
 photo-diff = "photo_diff.cli:main"
+tile-fetcher = "tile_fetcher.cli:main"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/photo_diff"]
+packages = ["src/photo_diff", "src/tile_fetcher"]

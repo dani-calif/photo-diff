@@ -1,9 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Sequence
+from typing import Protocol, Sequence
 
-from photo_diff.services.embedding import ImageEmbeddingService
 from photo_diff.services.similarity import CosineSimilarityService
 
 
@@ -34,11 +33,33 @@ class CompareImageMatrixResult:
     cosine_similarity_matrix: list[list[float]]
 
 
+class EmbeddingService(Protocol):
+    async def embed_images(self, images_base64: Sequence[str]) -> list[list[float]]:
+        ...
+
+
+class SimilarityService(Protocol):
+    def cosine_similarity(
+        self, vector_a: Sequence[float], vector_b: Sequence[float]
+    ) -> float:
+        ...
+
+
+class ImageComparisonUseCase(Protocol):
+    async def compare_images(self, request: CompareImagesRequest) -> CompareImagesResult:
+        ...
+
+    async def compare_image_matrix(
+        self, request: CompareImageMatrixRequest
+    ) -> CompareImageMatrixResult:
+        ...
+
+
 class ImageComparisonService:
     def __init__(
         self,
-        embedding_service: ImageEmbeddingService,
-        similarity_service: CosineSimilarityService | None = None,
+        embedding_service: EmbeddingService,
+        similarity_service: SimilarityService | None = None,
     ) -> None:
         self._embedding_service = embedding_service
         self._similarity_service = similarity_service or CosineSimilarityService()
@@ -86,7 +107,7 @@ class ImageComparisonService:
 
 def _build_cosine_similarity_matrix(
     embeddings: Sequence[Sequence[float]],
-    similarity_service: CosineSimilarityService,
+    similarity_service: SimilarityService,
 ) -> list[list[float]]:
     if not embeddings:
         raise ValueError("embeddings cannot be empty.")
