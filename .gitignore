@@ -13,6 +13,25 @@ wheels/
 
 # Environment files
 .env
+.env.*
+!.env.example
+!.env.template
+
+# Secrets and local credentials
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+*.cer
+*.der
+*.jks
+*.keystore
+*.secret
+*.secrets
+secrets/
 
 # OS files
 .DS_Store
+
+skills/
