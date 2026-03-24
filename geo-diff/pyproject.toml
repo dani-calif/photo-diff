@@ -5,22 +5,26 @@ build-backend = "hatchling.build"
 [project]
 name = "geo-diff"
 version = "0.1.0"
-description = "CLI POC for image similarity using embedding APIs"
+description = "Image comparison service that consumes tile-fetcher as a library"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "fastapi>=0.115.0",
     "httpx>=0.27.0",
+    "numpy>=1.26.0",
     "pillow>=10.0.0",
     "pydantic-settings>=2.3.0",
     "rasterio>=1.4.0",
     "shapely>=2.0.0",
+    "tile-fetcher",
     "uvicorn>=0.30.0",
 ]
 
 [project.scripts]
 geo-diff = "geo_diff.cli:main"
-tile-fetcher = "tile_fetcher.cli:main"
+
+[tool.uv.sources]
+tile-fetcher = { path = "../tile-fetcher" }
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/geo_diff", "src/tile_fetcher"]
+packages = ["src/geo_diff"]

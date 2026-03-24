@@ -1,27 +1,12 @@
 from __future__ import annotations
 
-import logging
 from dataclasses import dataclass
 from typing import Any, Mapping, Protocol
 
 from pydantic import BaseModel, Field
-from shapely.geometry import Point
 from tile_fetcher.errors import TileFetchError
 from tile_fetcher.http import HttpClient
-from tile_fetcher.services.models import ProviderImage, ResolvedImage, XYXYBox
-
-logger = logging.getLogger(__name__)
-
-
-class ResolveTileForPointFn(Protocol):
-    async def __call__(
-        self,
-        gid: str,
-        point: Point,
-        timeout_seconds: float,
-    ) -> ResolvedImage:
-        ...
-
+from tile_fetcher.services.models import ProviderImage, XYXYBox
 
 class FetchImageFn(Protocol):
     async def __call__(
@@ -33,78 +18,27 @@ class FetchImageFn(Protocol):
         ...
 
 
-class ResolveTileQuery(BaseModel):
-    image_id: str
-    lon: float
-    lat: float
-
-
 class FetchImageQuery(BaseModel):
     image_id: str
     bbox: str
 
 
-class ResolvedImagePayload(BaseModel):
-    image_id: str = Field(min_length=1)
-    bbox: str = Field(min_length=1)
-    azimuth: float
-
-    def to_domain(self) -> ResolvedImage:
-        return ResolvedImage(
-            bounds=XYXYBox.from_string(self.bbox),
-            azimuth=self.azimuth,
-        )
-
-
 class FetchedImagePayload(BaseModel):
     url: str = Field(min_length=1)
-    azimuth: float
 
 
 @dataclass(slots=True)
 class ImageProviderClient:
-    resolve_tile_for_point: ResolveTileForPointFn
     fetch_image: FetchImageFn
 
 
 def build_http_image_provider(
     *,
     api_base_url: str,
-    geo_path: str,
     light_path: str,
     http_client: HttpClient,
 ) -> ImageProviderClient:
     base_url = api_base_url.rstrip("/")
-
-    async def resolve_tile_for_point(gid: str, point: Point, timeout_seconds: float) -> ResolvedImage:
-        try:
-            response = await http_client.get(
-                f"{base_url}{geo_path}",
-                timeout=timeout_seconds,
-                params=_string_params(
-                    ResolveTileQuery(image_id=gid, lon=point.x, lat=point.y)
-                ),
-            )
-            response.raise_for_status()
-        except Exception as exc:
-            raise TileFetchError(f"Failed to resolve tile for '{gid}': {exc}") from exc
-
-        for candidate in _extract_tile_objects(response.json()):
-            resolved_image_payload = ResolvedImagePayload.model_validate(candidate)
-            if resolved_image_payload.image_id == gid:
-                resolved_image = resolved_image_payload.to_domain()
-                logger.info(
-                    "resolved tile",
-                    extra={
-                        "gid": gid,
-                        "bbox_width": resolved_image.bounds.width,
-                        "bbox_height": resolved_image.bounds.height,
-                        "azimuth": resolved_image.azimuth,
-                    },
-                )
-                return resolved_image
-
-        raise ValueError(f"No wms/geo tile found for gid '{gid}'.")
 
     async def fetch_image(gid: str, pixel_bbox: XYXYBox, timeout_seconds: float) -> ProviderImage:
         try:
@@ -131,11 +65,10 @@ def build_http_image_provider(
 
         return ProviderImage(
             image_bytes=image_response.content,
-            azimuth=fetched_image.azimuth,
+            pixel_bbox=pixel_bbox,
         )
 
     return ImageProviderClient(
-        resolve_tile_for_point=resolve_tile_for_point,
         fetch_image=fetch_image,
     )
 
@@ -170,28 +103,6 @@ def _extract_first_object(body: Any, context: str) -> Mapping[str, Any]:
         raise ValueError(f"{context} list item must be a JSON object.")
 
     raise ValueError(f"{context} must be an object or list of objects.")
-
-
-def _extract_tile_objects(body: Any) -> list[Mapping[str, Any]]:
-    if isinstance(body, list):
-        candidates = body
-    elif isinstance(body, Mapping):
-        if "data" in body and isinstance(body["data"], list):
-            candidates = body["data"]
-        else:
-            candidates = [body]
-    else:
-        raise ValueError("wms/geo response must be an object or list.")
-
-    if not candidates:
-        raise ValueError("wms/geo response does not contain tile candidates.")
-
-    objects: list[Mapping[str, Any]] = []
-    for item in candidates:
-        if not isinstance(item, Mapping):
-            raise ValueError("wms/geo response candidates must be JSON objects.")
-        objects.append(item)
-    return objects
 
 
 def _string_params(model: BaseModel) -> dict[str, str]:

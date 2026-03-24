@@ -34,7 +34,6 @@ SCENES = {
             "https://sentinel-cogs.s3.us-west-2.amazonaws.com/"
             "sentinel-s2-l2a-cogs/12/R/UU/2024/4/S2A_12RUU_20240401_0_L2A/TCI.tif"
         ),
-        azimuth_degrees=17.0,
     ),
     "s2-2024-04-26": DemoRasterScene(
         gid="s2-2024-04-26",
@@ -42,7 +41,6 @@ SCENES = {
             "https://sentinel-cogs.s3.us-west-2.amazonaws.com/"
             "sentinel-s2-l2a-cogs/12/R/UU/2024/4/S2B_12RUU_20240426_0_L2A/TCI.tif"
         ),
-        azimuth_degrees=-11.0,
     ),
 }
 BUFFER_SIZE_METERS = 600.0
@@ -56,7 +54,6 @@ async def main() -> None:
         image_provider=build_demo_rasterio_image_provider(SCENES),
         projection_mapper=build_demo_rasterio_projection_mapper(SCENES),
         timeout_seconds=30.0,
-        expand_factor=1.6,
     )
     comparison_service = ImageComparisonService(DemoImageEmbeddingService())
     geo_diff_service = GeoDiffService(
@@ -67,7 +64,6 @@ async def main() -> None:
     summary = {
         "buffer_size_meters": BUFFER_SIZE_METERS,
         "scenes": {gid: scene.raster_ref for gid, scene in SCENES.items()},
-        "scene_azimuths": {gid: scene.azimuth_degrees for gid, scene in SCENES.items()},
         "points": {},
     }
     for label, point in points.items():

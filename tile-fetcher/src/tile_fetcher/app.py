@@ -80,16 +80,13 @@ def _build_tile_fetch_service(settings: TileFetcherSettings) -> TileFetchService
     return TileFetchService(
         image_provider=build_http_image_provider(
             api_base_url=settings.api_base_url,
-            geo_path=settings.image_provider_geo_path,
             light_path=settings.image_provider_light_path,
             http_client=http_client,
         ),
         projection_mapper=build_http_projection_mapper(
             api_base_url=settings.api_base_url,
             g2i_path=settings.projection_mapper_g2i_path,
-            i2g_path=settings.projection_mapper_i2g_path,
             http_client=http_client,
         ),
         timeout_seconds=settings.timeout_seconds,
-        expand_factor=settings.expand_factor,
     )

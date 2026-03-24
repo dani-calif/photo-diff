@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Sequence
 
 from shapely.geometry import Point
 
@@ -66,14 +67,39 @@ class XYXYBox:
     def to_string(self) -> str:
         return f"{self.xmin},{self.ymin},{self.xmax},{self.ymax}"
 
+    @classmethod
+    def from_points(cls, points: Sequence[Point]) -> "XYXYBox":
+        if not points:
+            raise ValueError("Cannot build a bounding box from an empty point sequence.")
+        xs = [point.x for point in points]
+        ys = [point.y for point in points]
+        return cls(
+            xmin=min(xs),
+            ymin=min(ys),
+            xmax=max(xs),
+            ymax=max(ys),
+        )
+
 
 @dataclass(slots=True)
-class ResolvedImage:
-    bounds: XYXYBox
-    azimuth: float
+class PointQuad:
+    upper_left: Point
+    lower_left: Point
+    lower_right: Point
+    upper_right: Point
 
+    def points(self) -> tuple[Point, Point, Point, Point]:
+        return (
+            self.upper_left,
+            self.lower_left,
+            self.lower_right,
+            self.upper_right,
+        )
 
+    @property
+    def bounding_box(self) -> XYXYBox:
+        return XYXYBox.from_points(self.points())
 @dataclass(slots=True)
 class ProviderImage:
     image_bytes: bytes
-    azimuth: float
+    pixel_bbox: XYXYBox

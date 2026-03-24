@@ -33,10 +33,6 @@ class DemoRasterTileFetcherTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(pixels, [GeometryPoint(2.0, 2.0)])
 
-        geo_points = await mapper.pixel_to_geo_points("scene-1", [Point(2.0, 2.0)], 1.0)
-        self.assertAlmostEqual(geo_points[0].x, 10.025, places=6)
-        self.assertAlmostEqual(geo_points[0].y, 49.975, places=6)
-
     async def test_image_provider_fetches_pixel_window(self) -> None:
         raster_path = _create_test_raster()
         scene = DemoRasterScene(gid="scene-1", raster_ref=str(raster_path), bands=(1, 2, 3))
@@ -45,10 +41,7 @@ class DemoRasterTileFetcherTests(unittest.IsolatedAsyncioTestCase):
         image = await provider.fetch_image("scene-1", XYXYBox(1.0, 1.0, 4.0, 4.0), 1.0)
         with Image.open(io.BytesIO(image.image_bytes)) as rendered:
             self.assertEqual(rendered.size, (3, 3))
-
-        resolved_image = await provider.resolve_tile_for_point("scene-1", Point(10.0, 50.0), 1.0)
-        self.assertAlmostEqual(resolved_image.bounds.xmin, 10.0, places=6)
-        self.assertAlmostEqual(resolved_image.bounds.ymax, 50.0, places=6)
+        self.assertEqual(image.pixel_bbox, XYXYBox(1.0, 1.0, 4.0, 4.0))
 
 
 def _create_test_raster() -> Path:

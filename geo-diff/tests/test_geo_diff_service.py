@@ -46,12 +46,10 @@ class _FakeTileFetchService(TileFetchService):
         self.last_call: tuple[list[str], float, float, float, bool] | None = None
         super().__init__(
             image_provider=ImageProviderClient(
-                resolve_tile_for_point=self._unused_resolve_tile_for_point,
                 fetch_image=self._unused_fetch_image,
             ),
             projection_mapper=ProjectionMapperClient(
                 geo_to_pixel_points=self._unused_geo_to_pixel_points,
-                pixel_to_geo_points=self._unused_pixel_to_geo_points,
             ),
             timeout_seconds=1.0,
         )
@@ -68,9 +66,6 @@ class _FakeTileFetchService(TileFetchService):
         self.last_call = (list(image_ids), lon, lat, buffer_size_meters, north_aligned)
         return self.images
 
-    async def _unused_resolve_tile_for_point(self, gid: str, point: Point, timeout_seconds: float):
-        raise AssertionError(f"Unexpected call: resolve_tile_for_point({gid}, {point}, {timeout_seconds})")
-
     async def _unused_fetch_image(self, gid: str, pixel_bbox, timeout_seconds: float):
         raise AssertionError(f"Unexpected call: fetch_image({gid}, {pixel_bbox}, {timeout_seconds})")
 
@@ -81,15 +76,6 @@ class _FakeTileFetchService(TileFetchService):
         timeout_seconds: float,
     ) -> list[Point]:
         raise AssertionError(f"Unexpected call: geo_to_pixel_points({gid}, {points}, {timeout_seconds})")
-
-    async def _unused_pixel_to_geo_points(
-        self,
-        gid: str,
-        points: Sequence[Point],
-        timeout_seconds: float,
-    ) -> list[Point]:
-        raise AssertionError(f"Unexpected call: pixel_to_geo_points({gid}, {points}, {timeout_seconds})")
-
 
 class GeoDiffServiceTests(unittest.IsolatedAsyncioTestCase):
     async def test_compare_raw_images_normalizes_input(self) -> None:

@@ -15,7 +15,7 @@ from rasterio.windows import Window
 from rasterio.warp import transform
 from shapely.geometry import Point
 
-from tile_fetcher.services.models import ProviderImage, ResolvedImage, XYXYBox
+from tile_fetcher.services.models import ProviderImage, XYXYBox
 from tile_fetcher.utils.image_provider import ImageProviderClient
 from tile_fetcher.utils.projection_mapper import ProjectionMapperClient
 
@@ -28,7 +28,6 @@ EPSG4326 = "EPSG:4326"
 class DemoRasterScene:
     gid: str
     raster_ref: str
-    azimuth_degrees: float = 0.0
     bands: tuple[int, ...] = (1, 2, 3)
 
     def path(self) -> str:
@@ -40,22 +39,6 @@ class DemoRasterScene:
 def build_demo_rasterio_image_provider(
     scenes: Mapping[str, DemoRasterScene],
 ) -> ImageProviderClient:
-    async def resolve_tile_for_point(
-        gid: str,
-        point: Point,
-        timeout_seconds: float,
-    ) -> ResolvedImage:
-        del point, timeout_seconds
-        scene = _require_scene(scenes, gid)
-        with rasterio.open(scene.path()) as dataset:
-            left, bottom, right, top = _dataset_bounds_wgs84(dataset)
-
-        logger.info("resolved raster tile", extra={"gid": gid, "raster_ref": scene.raster_ref})
-        return ResolvedImage(
-            bounds=XYXYBox(xmin=left, ymin=bottom, xmax=right, ymax=top),
-            azimuth=scene.azimuth_degrees,
-        )
-
     async def fetch_image(
         gid: str,
         pixel_bbox: XYXYBox,
@@ -81,17 +64,22 @@ def build_demo_rasterio_image_provider(
                 "window_height": window.height,
             },
         )
-        return ProviderImage(image_bytes=image_bytes, azimuth=scene.azimuth_degrees)
+        return ProviderImage(
+            image_bytes=image_bytes,
+            pixel_bbox=XYXYBox(
+                xmin=float(window.col_off),
+                ymin=float(window.row_off),
+                xmax=float(window.col_off + window.width),
+                ymax=float(window.row_off + window.height),
+            ),
+        )
 
     return ImageProviderClient(
-        resolve_tile_for_point=resolve_tile_for_point,
         fetch_image=fetch_image,
     )
 
 
-def build_demo_rasterio_projection_mapper(
-    scenes: Mapping[str, DemoRasterScene],
-) -> ProjectionMapperClient:
+def build_demo_rasterio_projection_mapper(scenes: Mapping[str, DemoRasterScene]) -> ProjectionMapperClient:
     async def geo_to_pixel_points(
         gid: str,
         points: Sequence[Point],
@@ -107,44 +95,15 @@ def build_demo_rasterio_projection_mapper(
                 pixel_points.append(Point(float(col), float(row)))
         return pixel_points
 
-    async def pixel_to_geo_points(
-        gid: str,
-        points: Sequence[Point],
-        timeout_seconds: float,
-    ) -> list[Point]:
-        del timeout_seconds
-        scene = _require_scene(scenes, gid)
-        with rasterio.open(scene.path()) as dataset:
-            geo_points: list[Point] = []
-            for point in points:
-                x, y = dataset.xy(int(round(point.y)), int(round(point.x)))
-                lon, lat = _from_dataset_crs(dataset, x, y)
-                geo_points.append(Point(lon, lat))
-        return geo_points
-
     return ProjectionMapperClient(
         geo_to_pixel_points=geo_to_pixel_points,
-        pixel_to_geo_points=pixel_to_geo_points,
     )
-
-
-def _dataset_bounds_wgs84(dataset: DatasetReader) -> tuple[float, float, float, float]:
-    left, bottom, right, top = dataset.bounds
-    xs, ys = _transform_xy(dataset.crs, EPSG4326, [left, right], [bottom, top])
-    return min(xs), min(ys), max(xs), max(ys)
 
 
 def _to_dataset_crs(dataset: DatasetReader, lon: float, lat: float) -> tuple[float, float]:
     if str(dataset.crs) == EPSG4326:
         return lon, lat
     xs, ys = _transform_xy(EPSG4326, dataset.crs, [lon], [lat])
-    return xs[0], ys[0]
-
-
-def _from_dataset_crs(dataset: DatasetReader, x: float, y: float) -> tuple[float, float]:
-    if str(dataset.crs) == EPSG4326:
-        return x, y
-    xs, ys = _transform_xy(dataset.crs, EPSG4326, [x], [y])
     return xs[0], ys[0]
 
 

@@ -18,11 +18,8 @@ class SettingsTests(unittest.TestCase):
                 "GEO_DIFF_SENDING_SYSTEM": "geo-diff-tests",
                 "GEO_DIFF_TIMEOUT_SECONDS": "12.5",
                 "GEO_DIFF_TILE_API_BASE_URL": "https://imagery.example.com",
-                "GEO_DIFF_TILE_EXPAND_FACTOR": "1.5",
-                "GEO_DIFF_TILE_IMAGE_PROVIDER_GEO_PATH": "/custom/wms/geo",
                 "GEO_DIFF_TILE_IMAGE_PROVIDER_LIGHT_PATH": "/custom/wms/light",
                 "GEO_DIFF_TILE_PROJECTION_MAPPER_G2I_PATH": "/custom/g2i",
-                "GEO_DIFF_TILE_PROJECTION_MAPPER_I2G_PATH": "/custom/i2g",
             },
             clear=True,
         ):
@@ -32,11 +29,8 @@ class SettingsTests(unittest.TestCase):
         self.assertEqual(settings.sending_system, "geo-diff-tests")
         self.assertEqual(settings.timeout_seconds, 12.5)
         self.assertEqual(settings.tile_api_base_url, "https://imagery.example.com")
-        self.assertEqual(settings.tile_expand_factor, 1.5)
-        self.assertEqual(settings.tile_image_provider_geo_path, "/custom/wms/geo")
         self.assertEqual(settings.tile_image_provider_light_path, "/custom/wms/light")
         self.assertEqual(settings.tile_projection_mapper_g2i_path, "/custom/g2i")
-        self.assertEqual(settings.tile_projection_mapper_i2g_path, "/custom/i2g")
 
     def test_overrides_take_precedence(self) -> None:
         with patch.dict(
@@ -52,21 +46,15 @@ class SettingsTests(unittest.TestCase):
                 sending_system="cli-system",
                 timeout_seconds=42.0,
                 tile_api_base_url="https://cli-imagery.example.com",
-                tile_expand_factor=1.6,
-                tile_image_provider_geo_path="/geo/path",
                 tile_image_provider_light_path="/light/path",
                 tile_projection_mapper_g2i_path="/g2i/path",
-                tile_projection_mapper_i2g_path="/i2g/path",
             )
 
         self.assertEqual(settings.api_url, "https://cli.example.com/embed/image")
         self.assertEqual(settings.timeout_seconds, 42.0)
         self.assertEqual(settings.tile_api_base_url, "https://cli-imagery.example.com")
-        self.assertEqual(settings.tile_expand_factor, 1.6)
-        self.assertEqual(settings.tile_image_provider_geo_path, "/geo/path")
         self.assertEqual(settings.tile_image_provider_light_path, "/light/path")
         self.assertEqual(settings.tile_projection_mapper_g2i_path, "/g2i/path")
-        self.assertEqual(settings.tile_projection_mapper_i2g_path, "/i2g/path")
 
     def test_api_url_is_required(self) -> None:
         with patch.dict(os.environ, {}, clear=True):

@@ -1,0 +1,189 @@
+from __future__ import annotations
+
+import base64
+import unittest
+from dataclasses import dataclass
+from io import BytesIO
+from typing import Sequence
+
+from PIL import Image, ImageDraw
+from shapely.geometry import Point
+
+from tile_fetcher import (
+    ImageProviderClient,
+    Point as GeometryPoint,
+    ProjectionMapperClient,
+    ProviderImage,
+    TileFetchService,
+    XYXYBox,
+)
+
+
+@dataclass(slots=True)
+class _FakeImageProvider:
+    template_image_bytes: bytes
+    fetch_image_calls: list[tuple[str, str, float]]
+
+    async def fetch_image(
+        self,
+        gid: str,
+        pixel_bbox: XYXYBox,
+        timeout_seconds: float,
+    ) -> ProviderImage:
+        self.fetch_image_calls.append((gid, pixel_bbox.to_string(), timeout_seconds))
+        rendered_width = max(1, int(round(pixel_bbox.width)))
+        rendered_height = max(1, int(round(pixel_bbox.height)))
+        return ProviderImage(
+            image_bytes=_resize_image(
+                self.template_image_bytes,
+                width=rendered_width,
+                height=rendered_height,
+            ),
+            pixel_bbox=pixel_bbox,
+        )
+
+
+class _FakeProjectionMapper:
+    def __init__(self, pixel_quads: dict[str, list[GeometryPoint]]) -> None:
+        self._pixel_quads = pixel_quads
+        self.geo_to_pixel_calls: list[tuple[str, list[GeometryPoint], float]] = []
+
+    async def geo_to_pixel_points(
+        self,
+        gid: str,
+        points: Sequence[GeometryPoint],
+        timeout_seconds: float,
+    ) -> list[GeometryPoint]:
+        self.geo_to_pixel_calls.append((gid, list(points), timeout_seconds))
+        return self._pixel_quads[gid]
+
+
+class TileFetchServiceTests(unittest.IsolatedAsyncioTestCase):
+    async def test_fetch_tiles_at_point_as_base64_fetches_enclosing_bbox_of_projected_geo_square(self) -> None:
+        provider = _FakeImageProvider(
+            template_image_bytes=_make_gradient_image(),
+            fetch_image_calls=[],
+        )
+        projection_mapper = _FakeProjectionMapper(
+            pixel_quads={
+                "img-1": [
+                    Point(100.0, 100.0),
+                    Point(90.0, 130.0),
+                    Point(120.0, 140.0),
+                    Point(130.0, 110.0),
+                ]
+            }
+        )
+        service = TileFetchService(
+            image_provider=ImageProviderClient(
+                fetch_image=provider.fetch_image,
+            ),
+            projection_mapper=ProjectionMapperClient(
+                geo_to_pixel_points=projection_mapper.geo_to_pixel_points,
+            ),
+            timeout_seconds=10.0,
+        )
+
+        encoded = await service.fetch_tiles_at_point_as_base64(
+            image_ids=["img-1"],
+            lon=34.0,
+            lat=31.0,
+            buffer_size_meters=5.0,
+        )
+
+        self.assertEqual(len(projection_mapper.geo_to_pixel_calls), 1)
+        gid, geo_points, timeout_seconds = projection_mapper.geo_to_pixel_calls[0]
+        self.assertEqual((gid, timeout_seconds), ("img-1", 10.0))
+        self.assertEqual(len(geo_points), 4)
+        self.assertLess(geo_points[0].x, geo_points[3].x)
+        self.assertGreater(geo_points[0].y, geo_points[1].y)
+        self.assertEqual(
+            provider.fetch_image_calls,
+            [("img-1", "90.0,100.0,130.0,140.0", 10.0)],
+        )
+
+        rendered = _decode_image(encoded[0])
+        self.assertEqual(rendered.size, (32, 32))
+
+    async def test_north_aligned_flag_changes_output(self) -> None:
+        source_bytes = _make_split_color_image()
+
+        async def run(north_aligned: bool) -> tuple[str, list[tuple[str, str, float]]]:
+            provider = _FakeImageProvider(
+                template_image_bytes=source_bytes,
+                fetch_image_calls=[],
+            )
+            projection_mapper = _FakeProjectionMapper(
+                pixel_quads={
+                    "img-1": [
+                        Point(100.0, 100.0),
+                        Point(90.0, 130.0),
+                        Point(120.0, 140.0),
+                        Point(130.0, 110.0),
+                    ]
+                }
+            )
+            service = TileFetchService(
+                image_provider=ImageProviderClient(
+                    fetch_image=provider.fetch_image,
+                ),
+                projection_mapper=ProjectionMapperClient(
+                    geo_to_pixel_points=projection_mapper.geo_to_pixel_points,
+                ),
+                timeout_seconds=10.0,
+            )
+            images = await service.fetch_tiles_at_point_as_base64(
+                image_ids=["img-1"],
+                lon=0.0,
+                lat=0.0,
+                buffer_size_meters=5.0,
+                north_aligned=north_aligned,
+            )
+            return images[0], provider.fetch_image_calls
+
+        north_aligned_image, north_calls = await run(True)
+        raw_orientation_image, raw_calls = await run(False)
+
+        self.assertNotEqual(north_aligned_image, raw_orientation_image)
+        self.assertEqual(north_calls, [("img-1", "90.0,100.0,130.0,140.0", 10.0)])
+        self.assertEqual(raw_calls, [("img-1", "90.0,100.0,130.0,140.0", 10.0)])
+        self.assertEqual(_decode_image(north_aligned_image).size, (32, 32))
+        self.assertEqual(_decode_image(raw_orientation_image).size, (40, 40))
+
+
+def _decode_image(image_b64: str) -> Image.Image:
+    return Image.open(BytesIO(base64.b64decode(image_b64))).convert("RGB")
+
+
+def _make_gradient_image() -> bytes:
+    image = Image.new("RGB", (300, 300), color=(0, 0, 0))
+    draw = ImageDraw.Draw(image)
+    for x in range(300):
+        draw.line((x, 0, x, 299), fill=(x % 255, 100, 200))
+
+    out = BytesIO()
+    image.save(out, format="PNG")
+    return out.getvalue()
+
+
+def _make_split_color_image() -> bytes:
+    image = Image.new("RGB", (400, 400), color=(0, 0, 0))
+    draw = ImageDraw.Draw(image)
+    draw.rectangle((0, 0, 199, 399), fill=(255, 0, 0))
+    draw.rectangle((200, 0, 399, 399), fill=(0, 0, 255))
+
+    out = BytesIO()
+    image.save(out, format="PNG")
+    return out.getvalue()
+
+
+def _resize_image(image_bytes: bytes, *, width: int, height: int) -> bytes:
+    with Image.open(BytesIO(image_bytes)) as source_image:
+        resized = source_image.convert("RGB").resize((width, height), Image.Resampling.BICUBIC)
+    out = BytesIO()
+    resized.save(out, format="PNG")
+    return out.getvalue()
+
+
+if __name__ == "__main__":
+    unittest.main()
