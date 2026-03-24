@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Protocol, Sequence
 
-from photo_diff.services.similarity import CosineSimilarityService
+from geo_diff.services.similarity import CosineSimilarityService
 
 
 @dataclass(slots=True)
@@ -16,7 +16,6 @@ class CompareImagesRequest:
 class CompareImagesResult:
     image_a: str
     image_b: str
-    embedding_dimensions: int
     cosine_similarity: float
 
 
@@ -29,7 +28,6 @@ class CompareImageMatrixRequest:
 @dataclass(slots=True)
 class CompareImageMatrixResult:
     image_ids: list[str]
-    embedding_dimensions: int
     cosine_similarity_matrix: list[list[float]]
 
 
@@ -78,7 +76,6 @@ class ImageComparisonService:
         return CompareImagesResult(
             image_a=request.image_a,
             image_b=request.image_b,
-            embedding_dimensions=len(embedding_a),
             cosine_similarity=similarity,
         )
 
@@ -100,7 +97,6 @@ class ImageComparisonService:
         matrix = _build_cosine_similarity_matrix(embeddings, self._similarity_service)
         return CompareImageMatrixResult(
             image_ids=request.image_ids,
-            embedding_dimensions=len(embeddings[0]),
             cosine_similarity_matrix=matrix,
         )
 

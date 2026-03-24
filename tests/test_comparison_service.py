@@ -4,7 +4,7 @@ import unittest
 from dataclasses import dataclass
 from typing import Sequence
 
-from photo_diff.services.comparison import (
+from geo_diff.services.comparison import (
     CompareImageMatrixRequest,
     CompareImagesRequest,
     ImageComparisonService,
@@ -31,7 +31,7 @@ class _FakeSimilarityService:
         return self.result
 
 
-class ImageComparisonAppTests(unittest.IsolatedAsyncioTestCase):
+class ImageComparisonServiceTests(unittest.IsolatedAsyncioTestCase):
     async def test_compare_images_uses_similarity_service_result(self) -> None:
         embedding_service = _FakeEmbeddingService(
             embeddings=[[1.0, 0.0], [0.5, 0.5]],
@@ -44,7 +44,6 @@ class ImageComparisonAppTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(embedding_service.calls, [["a.jpg", "b.jpg"]])
         self.assertEqual(similarity_service.calls, [([1.0, 0.0], [0.5, 0.5])])
-        self.assertEqual(result.embedding_dimensions, 2)
         self.assertEqual(result.cosine_similarity, 0.42)
 
     async def test_compare_images_requires_two_embeddings(self) -> None:
@@ -77,7 +76,6 @@ class ImageComparisonAppTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(embedding_service.calls, [["b64-1", "b64-2", "b64-3"]])
         self.assertEqual(result.image_ids, ["img-1", "img-2", "img-3"])
-        self.assertEqual(result.embedding_dimensions, 2)
         self.assertEqual(len(result.cosine_similarity_matrix), 3)
         self.assertEqual(result.cosine_similarity_matrix[0][0], 1.0)
 

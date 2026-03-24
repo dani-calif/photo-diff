@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import unittest
 
-from photo_diff.services.embedding import EmbeddingApiError, ImageEmbeddingService
+from geo_diff.services.embedding import EmbeddingApiError, ImageEmbeddingService
 
 
 class FakeResponse:

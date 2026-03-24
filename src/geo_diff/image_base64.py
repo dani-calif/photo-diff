@@ -8,10 +8,8 @@ from typing import Any, Mapping, Protocol
 
 import httpx
 
-from photo_diff.constants import HTTP_SCHEME_HTTP, HTTP_SCHEME_HTTPS
 
-
-class HttpResponseLike(Protocol):
+class ImageFetchResponse(Protocol):
     @property
     def content(self) -> bytes:
         ...
@@ -23,29 +21,39 @@ class HttpResponseLike(Protocol):
         ...
 
 
-class HttpClient(Protocol):
+class ImageFetchHttpClient(Protocol):
     async def get(
-        self, url: str, *, timeout: float, params: Mapping[str, str] | None = None
-    ) -> HttpResponseLike:
+        self,
+        url: str,
+        *,
+        timeout: float,
+        params: Mapping[str, str] | None = None,
+    ) -> ImageFetchResponse:
         ...
 
 
-class HttpxGetClient:
+class HttpxImageFetchClient:
     async def get(
-        self, url: str, *, timeout: float, params: Mapping[str, str] | None = None
-    ) -> HttpResponseLike:
+        self,
+        url: str,
+        *,
+        timeout: float,
+        params: Mapping[str, str] | None = None,
+    ) -> ImageFetchResponse:
         async with httpx.AsyncClient(timeout=timeout) as client:
             return await client.get(url, params=params)
 
 
-async def load_image_as_base64(
+async def load_image_ref_as_base64(
     image_ref: str,
     timeout_seconds: float = 30.0,
-    http_client: HttpClient | None = None,
+    http_client: ImageFetchHttpClient | None = None,
 ) -> str:
-    client: HttpClient = http_client if http_client is not None else HttpxGetClient()
+    client: ImageFetchHttpClient = (
+        http_client if http_client is not None else HttpxImageFetchClient()
+    )
 
-    if image_ref.startswith((HTTP_SCHEME_HTTP, HTTP_SCHEME_HTTPS)):
+    if image_ref.startswith(("http://", "https://")):
         response = await client.get(image_ref, timeout=timeout_seconds)
         response.raise_for_status()
         return base64.b64encode(response.content).decode("ascii")

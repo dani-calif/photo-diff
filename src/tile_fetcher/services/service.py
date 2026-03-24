@@ -8,13 +8,14 @@ from io import BytesIO
 from typing import Sequence, TypeVar
 
 from PIL import Image
+from shapely.geometry import Point
 
-from tile_fetcher.constants import DEFAULT_ROTATION_SAFE_EXPAND_FACTOR
-from tile_fetcher.services.models import GeoPoint, PixelBBox, PixelPoint
+from tile_fetcher.services.models import XYXYBox
 from tile_fetcher.utils import ImageProviderClient, ProjectionMapperClient
 
-logger = logging.getLogger("tile-fetcher.service")
+logger = logging.getLogger(__name__)
 T = TypeVar("T")
+ROTATION_SAFE_EXPAND_FACTOR = math.sqrt(2.0)
 
 
 class TileFetchService:
@@ -24,7 +25,7 @@ class TileFetchService:
         image_provider: ImageProviderClient,
         projection_mapper: ProjectionMapperClient,
         timeout_seconds: float,
-        expand_factor: float = DEFAULT_ROTATION_SAFE_EXPAND_FACTOR,
+        expand_factor: float = ROTATION_SAFE_EXPAND_FACTOR,
     ) -> None:
         if expand_factor <= 1.0:
             raise ValueError("tile expand factor must be greater than 1.0.")
@@ -66,7 +67,7 @@ class TileFetchService:
 
             aligned_bytes = await self._fetch_image_bytes_for_id(
                 image_id=image_id,
-                center=GeoPoint(lon=lon, lat=lat),
+                center=Point(lon, lat),
                 buffer_size_meters=buffer_size_meters,
                 north_aligned=north_aligned,
             )
@@ -79,11 +80,11 @@ class TileFetchService:
         self,
         *,
         image_id: str,
-        center: GeoPoint,
+        center: Point,
         buffer_size_meters: float,
         north_aligned: bool,
     ) -> bytes:
-        tile = await self._image_provider.resolve_tile_for_point(
+        resolved_image = await self._image_provider.resolve_tile_for_point(
             image_id,
             center,
             self._timeout_seconds,
@@ -98,14 +99,14 @@ class TileFetchService:
 
         expand_factor = self._expand_factor
         if north_aligned:
-            expand_factor = max(expand_factor, DEFAULT_ROTATION_SAFE_EXPAND_FACTOR)
+            expand_factor = max(expand_factor, ROTATION_SAFE_EXPAND_FACTOR)
         expanded_bbox = target_bbox.expand(expand_factor)
 
         logger.info(
             "fetching tile image",
             extra={
                 "image_id": image_id,
-                "tile_azimuth": tile.azimuth,
+                "resolved_azimuth": resolved_image.azimuth,
                 "buffer_size_meters": buffer_size_meters,
                 "target_bbox": target_bbox.to_string(),
                 "expanded_bbox": expanded_bbox.to_string(),
@@ -129,15 +130,15 @@ class TileFetchService:
         self,
         *,
         image_id: str,
-        center: GeoPoint,
-        pixel_center: PixelPoint,
+        center: Point,
+        pixel_center: Point,
         buffer_size_meters: float,
-    ) -> PixelBBox:
+    ) -> XYXYBox:
         x_neighbor, y_neighbor = await self._resolve_geo_points(
             image_id=image_id,
             pixels=[
-                PixelPoint(x=pixel_center.x + 1.0, y=pixel_center.y),
-                PixelPoint(x=pixel_center.x, y=pixel_center.y + 1.0),
+                Point(pixel_center.x + 1.0, pixel_center.y),
+                Point(pixel_center.x, pixel_center.y + 1.0),
             ],
         )
         x_resolution = _meters_between(center, x_neighbor)
@@ -145,13 +146,13 @@ class TileFetchService:
         if x_resolution <= 0.0 or y_resolution <= 0.0:
             raise ValueError(f"Could not calculate pixel resolution for image_id '{image_id}'.")
 
-        return PixelBBox.around(
+        return XYXYBox.around_point(
             pixel_center,
             half_width=buffer_size_meters / x_resolution,
             half_height=buffer_size_meters / y_resolution,
         )
 
-    async def _resolve_pixel_center(self, *, image_id: str, center: GeoPoint) -> PixelPoint:
+    async def _resolve_pixel_center(self, *, image_id: str, center: Point) -> Point:
         pixels = await self._projection_mapper.geo_to_pixel_points(
             image_id,
             [center],
@@ -163,8 +164,8 @@ class TileFetchService:
         self,
         *,
         image_id: str,
-        pixels: Sequence[PixelPoint],
-    ) -> tuple[GeoPoint, GeoPoint]:
+        pixels: Sequence[Point],
+    ) -> tuple[Point, Point]:
         geo_points = await self._projection_mapper.pixel_to_geo_points(
             image_id,
             pixels,
@@ -178,8 +179,8 @@ class TileFetchService:
 def _crop_with_optional_alignment(
     source_image_bytes: bytes,
     azimuth_degrees: float,
-    target_bbox: PixelBBox,
-    expanded_bbox: PixelBBox,
+    target_bbox: XYXYBox,
+    expanded_bbox: XYXYBox,
     north_aligned: bool,
 ) -> bytes:
     rotation_degrees = -azimuth_degrees if north_aligned else 0.0
@@ -235,12 +236,12 @@ def _center_crop_box(
     return left, top, left + crop_width, top + crop_height
 
 
-def _meters_between(point_a: GeoPoint, point_b: GeoPoint) -> float:
+def _meters_between(point_a: Point, point_b: Point) -> float:
     earth_radius_meters = 6_371_000.0
-    lat1 = math.radians(point_a.lat)
-    lat2 = math.radians(point_b.lat)
-    delta_lat = math.radians(point_b.lat - point_a.lat)
-    delta_lon = math.radians(point_b.lon - point_a.lon)
+    lat1 = math.radians(point_a.y)
+    lat2 = math.radians(point_b.y)
+    delta_lat = math.radians(point_b.y - point_a.y)
+    delta_lon = math.radians(point_b.x - point_a.x)
 
     sin_lat = math.sin(delta_lat / 2.0)
     sin_lon = math.sin(delta_lon / 2.0)

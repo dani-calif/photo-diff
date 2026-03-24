@@ -6,18 +6,11 @@ from dataclasses import asdict
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
-from photo_diff.constants import (
-    APP_TITLE,
-    APP_VERSION,
-    ROUTE_COMPARE_POINT,
-    ROUTE_COMPARE_RAW_IMAGES,
-    ROUTE_HEALTH,
-)
-from photo_diff.services.comparison import ImageComparisonService, ImageComparisonUseCase
-from photo_diff.services.embedding import EmbeddingApiError, ImageEmbeddingService
-from photo_diff.services.service import PhotoDiffService, PhotoDiffUseCase
-from photo_diff.services.similarity import CosineSimilarityService
-from photo_diff.settings import AppSettings, load_settings
+from geo_diff.services.comparison import ImageComparisonService, ImageComparisonUseCase
+from geo_diff.services.embedding import EmbeddingApiError, ImageEmbeddingService
+from geo_diff.services.service import GeoDiffService, GeoDiffUseCase
+from geo_diff.services.similarity import CosineSimilarityService
+from geo_diff.settings import AppSettings, load_settings
 from tile_fetcher import (
     TileFetchError,
     TileFetchService,
@@ -26,7 +19,7 @@ from tile_fetcher import (
 )
 from tile_fetcher.http import HttpxGetClient
 
-logger = logging.getLogger("photo-diff.app")
+logger = logging.getLogger(__name__)
 
 
 class CompareImagesPayload(BaseModel):
@@ -45,23 +38,23 @@ class ComparePointPayload(BaseModel):
 def create_app(
     *,
     settings: AppSettings | None = None,
-    photo_diff_service: PhotoDiffUseCase | None = None,
+    geo_diff_service: GeoDiffUseCase | None = None,
     comparison_service: ImageComparisonUseCase | None = None,
     tile_fetch_service: TileFetchService | None = None,
 ) -> FastAPI:
-    app = FastAPI(title=APP_TITLE, version=APP_VERSION)
+    app = FastAPI(title="geo-diff", version="0.1.0")
     app_settings = settings or load_settings()
-    service = photo_diff_service or _build_photo_diff_service(
+    service = geo_diff_service or _build_geo_diff_service(
         settings=app_settings,
         comparison_service=comparison_service,
         tile_fetch_service=tile_fetch_service,
     )
 
-    @app.get(ROUTE_HEALTH)
+    @app.get("/health")
     async def health() -> dict[str, str]:
         return {"status": "ok"}
 
-    @app.post(ROUTE_COMPARE_RAW_IMAGES)
+    @app.post("/compare-raw-images")
     async def compare_raw_images(payload: CompareImagesPayload) -> dict[str, object]:
         logger.info("compare_raw_images request")
         try:
@@ -74,7 +67,7 @@ def create_app(
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         return asdict(result)
 
-    @app.post(ROUTE_COMPARE_POINT)
+    @app.post("/compare-point")
     async def compare_point(payload: ComparePointPayload) -> dict[str, object]:
         logger.info(
             "compare_point request",
@@ -106,13 +99,13 @@ def create_app_from_env() -> FastAPI:
     return create_app()
 
 
-def _build_photo_diff_service(
+def _build_geo_diff_service(
     *,
     settings: AppSettings,
     comparison_service: ImageComparisonUseCase | None = None,
     tile_fetch_service: TileFetchService | None = None,
-) -> PhotoDiffUseCase:
-    return PhotoDiffService(
+) -> GeoDiffUseCase:
+    return GeoDiffService(
         comparison_service=comparison_service or _build_image_comparison_service(settings),
         tile_fetch_service=tile_fetch_service or _build_tile_fetch_service(settings),
     )

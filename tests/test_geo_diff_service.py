@@ -4,15 +4,16 @@ import unittest
 from dataclasses import dataclass
 from typing import Sequence
 
-from photo_diff.services.comparison import (
+from shapely.geometry import Point
+
+from geo_diff.services.comparison import (
     CompareImageMatrixRequest,
     CompareImageMatrixResult,
     CompareImagesRequest,
     CompareImagesResult,
 )
-from photo_diff.services.service import PhotoDiffService
+from geo_diff.services.service import GeoDiffService
 from tile_fetcher import ImageProviderClient, ProjectionMapperClient, TileFetchService
-from tile_fetcher.services.models import GeoPoint, PixelPoint
 
 
 @dataclass(slots=True)
@@ -25,7 +26,6 @@ class _FakeComparisonService:
         return CompareImagesResult(
             image_a=request.image_a,
             image_b=request.image_b,
-            embedding_dimensions=4,
             cosine_similarity=0.9,
         )
 
@@ -36,7 +36,6 @@ class _FakeComparisonService:
         self.last_compare_matrix = request
         return CompareImageMatrixResult(
             image_ids=request.image_ids,
-            embedding_dimensions=4,
             cosine_similarity_matrix=[[1.0, 0.8], [0.8, 1.0]],
         )
 
@@ -69,7 +68,7 @@ class _FakeTileFetchService(TileFetchService):
         self.last_call = (list(image_ids), lon, lat, buffer_size_meters, north_aligned)
         return self.images
 
-    async def _unused_resolve_tile_for_point(self, gid: str, point: GeoPoint, timeout_seconds: float):
+    async def _unused_resolve_tile_for_point(self, gid: str, point: Point, timeout_seconds: float):
         raise AssertionError(f"Unexpected call: resolve_tile_for_point({gid}, {point}, {timeout_seconds})")
 
     async def _unused_fetch_image(self, gid: str, pixel_bbox, timeout_seconds: float):
@@ -78,24 +77,24 @@ class _FakeTileFetchService(TileFetchService):
     async def _unused_geo_to_pixel_points(
         self,
         gid: str,
-        points: Sequence[GeoPoint],
+        points: Sequence[Point],
         timeout_seconds: float,
-    ) -> list[PixelPoint]:
+    ) -> list[Point]:
         raise AssertionError(f"Unexpected call: geo_to_pixel_points({gid}, {points}, {timeout_seconds})")
 
     async def _unused_pixel_to_geo_points(
         self,
         gid: str,
-        points: Sequence[PixelPoint],
+        points: Sequence[Point],
         timeout_seconds: float,
-    ) -> list[GeoPoint]:
+    ) -> list[Point]:
         raise AssertionError(f"Unexpected call: pixel_to_geo_points({gid}, {points}, {timeout_seconds})")
 
 
-class PhotoDiffServiceTests(unittest.IsolatedAsyncioTestCase):
+class GeoDiffServiceTests(unittest.IsolatedAsyncioTestCase):
     async def test_compare_raw_images_normalizes_input(self) -> None:
         comparison = _FakeComparisonService()
-        service = PhotoDiffService(
+        service = GeoDiffService(
             comparison_service=comparison,
             tile_fetch_service=_FakeTileFetchService(images=[]),
         )
@@ -111,7 +110,7 @@ class PhotoDiffServiceTests(unittest.IsolatedAsyncioTestCase):
     async def test_compare_point_uses_tile_fetch_service(self) -> None:
         comparison = _FakeComparisonService()
         tile_fetcher = _FakeTileFetchService(images=["YQ==", "Yg=="])
-        service = PhotoDiffService(
+        service = GeoDiffService(
             comparison_service=comparison,
             tile_fetch_service=tile_fetcher,
         )

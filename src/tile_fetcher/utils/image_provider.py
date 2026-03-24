@@ -2,28 +2,69 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import Any, Awaitable, Callable, Mapping
+from typing import Any, Mapping, Protocol
 
-from tile_fetcher.constants import (
-    KEY_AZIMUTH,
-    KEY_BBOX,
-    KEY_DATA,
-    KEY_IMAGE_ID,
-    KEY_LAT,
-    KEY_LON,
-    KEY_URL,
-)
+from pydantic import BaseModel, Field
+from shapely.geometry import Point
 from tile_fetcher.errors import TileFetchError
 from tile_fetcher.http import HttpClient
-from tile_fetcher.services.models import GeoPoint, ImageTile, PixelBBox, ProviderImage
+from tile_fetcher.services.models import ProviderImage, ResolvedImage, XYXYBox
 
-logger = logging.getLogger("tile-fetcher.image-provider")
+logger = logging.getLogger(__name__)
+
+
+class ResolveTileForPointFn(Protocol):
+    async def __call__(
+        self,
+        gid: str,
+        point: Point,
+        timeout_seconds: float,
+    ) -> ResolvedImage:
+        ...
+
+
+class FetchImageFn(Protocol):
+    async def __call__(
+        self,
+        gid: str,
+        pixel_bbox: XYXYBox,
+        timeout_seconds: float,
+    ) -> ProviderImage:
+        ...
+
+
+class ResolveTileQuery(BaseModel):
+    image_id: str
+    lon: float
+    lat: float
+
+
+class FetchImageQuery(BaseModel):
+    image_id: str
+    bbox: str
+
+
+class ResolvedImagePayload(BaseModel):
+    image_id: str = Field(min_length=1)
+    bbox: str = Field(min_length=1)
+    azimuth: float
+
+    def to_domain(self) -> ResolvedImage:
+        return ResolvedImage(
+            bounds=XYXYBox.from_string(self.bbox),
+            azimuth=self.azimuth,
+        )
+
+
+class FetchedImagePayload(BaseModel):
+    url: str = Field(min_length=1)
+    azimuth: float
 
 
 @dataclass(slots=True)
 class ImageProviderClient:
-    resolve_tile_for_point: Callable[[str, GeoPoint, float], Awaitable[ImageTile]]
-    fetch_image: Callable[[str, PixelBBox, float], Awaitable[ProviderImage]]
+    resolve_tile_for_point: ResolveTileForPointFn
+    fetch_image: FetchImageFn
 
 
 def build_http_image_provider(
@@ -35,65 +76,62 @@ def build_http_image_provider(
 ) -> ImageProviderClient:
     base_url = api_base_url.rstrip("/")
 
-    async def resolve_tile_for_point(gid: str, point: GeoPoint, timeout_seconds: float) -> ImageTile:
+    async def resolve_tile_for_point(gid: str, point: Point, timeout_seconds: float) -> ResolvedImage:
         try:
             response = await http_client.get(
                 f"{base_url}{geo_path}",
                 timeout=timeout_seconds,
-                params={
-                    KEY_IMAGE_ID: gid,
-                    KEY_LON: str(point.lon),
-                    KEY_LAT: str(point.lat),
-                },
+                params=_string_params(
+                    ResolveTileQuery(image_id=gid, lon=point.x, lat=point.y)
+                ),
             )
             response.raise_for_status()
         except Exception as exc:
             raise TileFetchError(f"Failed to resolve tile for '{gid}': {exc}") from exc
 
         for candidate in _extract_tile_objects(response.json()):
-            if str(candidate[KEY_IMAGE_ID]) == gid:
-                tile = ImageTile.from_mapping(candidate)
+            resolved_image_payload = ResolvedImagePayload.model_validate(candidate)
+            if resolved_image_payload.image_id == gid:
+                resolved_image = resolved_image_payload.to_domain()
                 logger.info(
                     "resolved tile",
                     extra={
-                        "gid": tile.image_id,
-                        "bbox_width": tile.bbox.width,
-                        "bbox_height": tile.bbox.height,
-                        "azimuth": tile.azimuth,
+                        "gid": gid,
+                        "bbox_width": resolved_image.bounds.width,
+                        "bbox_height": resolved_image.bounds.height,
+                        "azimuth": resolved_image.azimuth,
                     },
                 )
-                return tile
+                return resolved_image
 
         raise ValueError(f"No wms/geo tile found for gid '{gid}'.")
 
-    async def fetch_image(gid: str, pixel_bbox: PixelBBox, timeout_seconds: float) -> ProviderImage:
+    async def fetch_image(gid: str, pixel_bbox: XYXYBox, timeout_seconds: float) -> ProviderImage:
         try:
             response = await http_client.get(
                 f"{base_url}{light_path}",
                 timeout=timeout_seconds,
-                params={
-                    KEY_IMAGE_ID: gid,
-                    KEY_BBOX: pixel_bbox.to_string(),
-                },
+                params=_string_params(
+                    FetchImageQuery(image_id=gid, bbox=pixel_bbox.to_string())
+                ),
             )
             response.raise_for_status()
         except Exception as exc:
             raise TileFetchError(f"Failed to fetch source image for '{gid}': {exc}") from exc
 
-        candidate = _extract_first_object(response.json(), "wms/light response")
-        source_url = str(candidate[KEY_URL]).strip()
-        if not source_url:
-            raise ValueError("wms/light response must include non-empty url.")
+        fetched_image = FetchedImagePayload.model_validate(
+            _extract_first_object(response.json(), "wms/light response")
+        )
 
         try:
-            image_response = await http_client.get(source_url, timeout=timeout_seconds)
+            image_response = await http_client.get(fetched_image.url, timeout=timeout_seconds)
             image_response.raise_for_status()
         except Exception as exc:
             raise TileFetchError(f"Failed to download source image for '{gid}': {exc}") from exc
 
         return ProviderImage(
             image_bytes=image_response.content,
-            azimuth=float(candidate[KEY_AZIMUTH]),
+            azimuth=fetched_image.azimuth,
         )
 
     return ImageProviderClient(
@@ -108,10 +146,10 @@ def extract_first_object(body: Any, context: str) -> Mapping[str, Any]:
 
 def _extract_first_object(body: Any, context: str) -> Mapping[str, Any]:
     if isinstance(body, Mapping):
-        if KEY_DATA not in body:
+        if "data" not in body:
             return body
 
-        data = body[KEY_DATA]
+        data = body["data"]
         if isinstance(data, Mapping):
             return data
         if isinstance(data, list):
@@ -138,8 +176,8 @@ def _extract_tile_objects(body: Any) -> list[Mapping[str, Any]]:
     if isinstance(body, list):
         candidates = body
     elif isinstance(body, Mapping):
-        if KEY_DATA in body and isinstance(body[KEY_DATA], list):
-            candidates = body[KEY_DATA]
+        if "data" in body and isinstance(body["data"], list):
+            candidates = body["data"]
         else:
             candidates = [body]
     else:
@@ -154,3 +192,7 @@ def _extract_tile_objects(body: Any) -> list[Mapping[str, Any]]:
             raise ValueError("wms/geo response candidates must be JSON objects.")
         objects.append(item)
     return objects
+
+
+def _string_params(model: BaseModel) -> dict[str, str]:
+    return {key: str(value) for key, value in model.model_dump().items()}

@@ -5,12 +5,12 @@ from typing import Sequence
 
 from fastapi.testclient import TestClient
 
-from photo_diff.app import create_app
-from photo_diff.services.comparison import CompareImageMatrixResult, CompareImagesResult
-from photo_diff.settings import AppSettings
+from geo_diff.app import create_app
+from geo_diff.services.comparison import CompareImageMatrixResult, CompareImagesResult
+from geo_diff.settings import AppSettings
 
 
-class _FakePhotoDiffService:
+class _FakeGeoDiffService:
     def __init__(self, *, error: Exception | None = None) -> None:
         self.error = error
         self.last_compare_raw: tuple[str, str] | None = None
@@ -28,7 +28,6 @@ class _FakePhotoDiffService:
         return CompareImagesResult(
             image_a="YQ==",
             image_b="Yg==",
-            embedding_dimensions=4,
             cosine_similarity=0.9,
         )
 
@@ -52,7 +51,6 @@ class _FakePhotoDiffService:
             raise self.error
         return CompareImageMatrixResult(
             image_ids=list(image_ids),
-            embedding_dimensions=4,
             cosine_similarity_matrix=[[1.0, 0.8], [0.8, 1.0]],
         )
 
@@ -62,13 +60,13 @@ class RouteTests(unittest.TestCase):
     def _settings() -> AppSettings:
         return AppSettings(
             api_url="https://api.example.com/embed/image",
-            sending_system="photo-diff-tests",
+            sending_system="geo-diff-tests",
             tile_api_base_url="https://imagery.example.com",
         )
 
     def test_compare_raw_images_returns_similarity(self) -> None:
-        fake_service = _FakePhotoDiffService()
-        app = create_app(photo_diff_service=fake_service, settings=self._settings())
+        fake_service = _FakeGeoDiffService()
+        app = create_app(geo_diff_service=fake_service, settings=self._settings())
         client = TestClient(app)
 
         response = client.post(
@@ -81,8 +79,8 @@ class RouteTests(unittest.TestCase):
         self.assertEqual(fake_service.last_compare_raw, ("YQ==", "Yg=="))
 
     def test_compare_raw_images_returns_400_for_runtime_error(self) -> None:
-        fake_service = _FakePhotoDiffService(error=ValueError("bad image"))
-        app = create_app(photo_diff_service=fake_service, settings=self._settings())
+        fake_service = _FakeGeoDiffService(error=ValueError("bad image"))
+        app = create_app(geo_diff_service=fake_service, settings=self._settings())
         client = TestClient(app)
 
         response = client.post(
@@ -94,8 +92,8 @@ class RouteTests(unittest.TestCase):
         self.assertEqual(response.json()["detail"], "bad image")
 
     def test_compare_point_returns_matrix_and_passes_default_alignment(self) -> None:
-        fake_service = _FakePhotoDiffService()
-        app = create_app(photo_diff_service=fake_service, settings=self._settings())
+        fake_service = _FakeGeoDiffService()
+        app = create_app(geo_diff_service=fake_service, settings=self._settings())
         client = TestClient(app)
 
         response = client.post(
@@ -117,8 +115,8 @@ class RouteTests(unittest.TestCase):
         )
 
     def test_compare_point_passes_alignment_flag(self) -> None:
-        fake_service = _FakePhotoDiffService()
-        app = create_app(photo_diff_service=fake_service, settings=self._settings())
+        fake_service = _FakeGeoDiffService()
+        app = create_app(geo_diff_service=fake_service, settings=self._settings())
         client = TestClient(app)
 
         response = client.post(

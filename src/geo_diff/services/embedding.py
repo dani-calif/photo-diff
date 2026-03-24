@@ -1,22 +1,12 @@
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
-from typing import Any, Mapping, Protocol, Sequence
+from typing import Any, Protocol, Sequence
 
 import httpx
+from pydantic import BaseModel, Field, field_validator
 
-from photo_diff.constants import (
-    HTTP_CONTENT_TYPE_JSON,
-    HTTP_HEADER_CONTENT_TYPE,
-    HTTP_HEADER_SENDING_SYSTEM,
-    KEY_DATA,
-    KEY_EMBEDDING,
-    KEY_IMAGE,
-    KEY_VECTOR,
-)
-
-logger = logging.getLogger("photo-diff.embedding")
+logger = logging.getLogger(__name__)
 
 
 class EmbeddingApiError(RuntimeError):
@@ -56,61 +46,45 @@ class HttpxTransport:
             return await client.post(url, json=json, headers=headers)
 
 
-@dataclass(slots=True)
-class EmbedImageRequest:
+class EmbedImageRequest(BaseModel):
     image: str
 
     def as_json(self) -> dict[str, str]:
-        return {KEY_IMAGE: self.image}
+        return self.model_dump()
 
 
-@dataclass(slots=True)
-class EmbeddingCandidate:
+class EmbeddingCandidate(BaseModel):
     embedding: list[float] | None = None
     vector: list[float] | None = None
 
+    @field_validator("embedding", "vector", mode="before")
     @classmethod
-    def from_mapping(cls, value: Mapping[str, Any]) -> "EmbeddingCandidate":
-        return cls(
-            embedding=(
-                _to_float_list_or_none(value[KEY_EMBEDDING])
-                if KEY_EMBEDDING in value
-                else None
-            ),
-            vector=(
-                _to_float_list_or_none(value[KEY_VECTOR]) if KEY_VECTOR in value else None
-            ),
-        )
+    def _validate_vector(cls, value: Any) -> list[float] | None:
+        return _to_float_list_or_none(value)
 
     def resolved(self) -> list[float] | None:
         return self.embedding or self.vector
 
 
-@dataclass(slots=True)
-class EmbeddingApiResponse:
-    root: EmbeddingCandidate
-    data: list[EmbeddingCandidate]
+class EmbeddingApiResponse(BaseModel):
+    embedding: list[float] | None = None
+    vector: list[float] | None = None
+    data: list[EmbeddingCandidate] = Field(default_factory=list)
 
     @classmethod
     def from_body(cls, body: Any) -> "EmbeddingApiResponse":
-        if not isinstance(body, Mapping):
+        if not isinstance(body, dict):
             raise EmbeddingApiError("Embedding API response must be a JSON object.")
-
-        root = EmbeddingCandidate.from_mapping(body)
-
-        data: list[EmbeddingCandidate] = []
-        if KEY_DATA in body:
-            data_raw = body[KEY_DATA]
-            if not isinstance(data_raw, list):
-                raise EmbeddingApiError("'data' field must be a list when present.")
-            for item in data_raw:
-                if not isinstance(item, Mapping):
-                    raise EmbeddingApiError("'data' items must be JSON objects.")
-                data.append(EmbeddingCandidate.from_mapping(item))
-        return cls(root=root, data=data)
+        try:
+            return cls.model_validate(body)
+        except Exception as exc:
+            raise EmbeddingApiError(f"Invalid embedding API response: {exc}") from exc
 
     def extract_embedding(self) -> list[float]:
-        candidates: list[EmbeddingCandidate] = [self.root, *self.data]
+        candidates: list[EmbeddingCandidate] = [
+            EmbeddingCandidate(embedding=self.embedding, vector=self.vector),
+            *self.data,
+        ]
         for candidate in candidates:
             vector = candidate.resolved()
             if vector is not None:
@@ -147,8 +121,8 @@ class ImageEmbeddingService:
             extra={"images_count": len(images_base64), "api_url": self._api_url},
         )
         headers = {
-            HTTP_HEADER_CONTENT_TYPE: HTTP_CONTENT_TYPE_JSON,
-            HTTP_HEADER_SENDING_SYSTEM: self._sending_system,
+            "Content-Type": "application/json",
+            "SendingSystem": self._sending_system,
         }
 
         output: list[list[float]] = []

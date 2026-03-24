@@ -1,19 +1,67 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Awaitable, Callable, Sequence
+from typing import Protocol, Sequence
 
-from tile_fetcher.constants import KEY_IMAGE_ID, KEY_LAT, KEY_LON, KEY_X, KEY_Y
+from pydantic import BaseModel
+from shapely.geometry import Point
 from tile_fetcher.errors import TileFetchError
 from tile_fetcher.http import HttpClient
-from tile_fetcher.services.models import GeoPoint, PixelPoint
 from tile_fetcher.utils.image_provider import extract_first_object
+
+
+class GeoToPixelPointsFn(Protocol):
+    async def __call__(
+        self,
+        gid: str,
+        points: Sequence[Point],
+        timeout_seconds: float,
+    ) -> list[Point]:
+        ...
+
+
+class PixelToGeoPointsFn(Protocol):
+    async def __call__(
+        self,
+        gid: str,
+        points: Sequence[Point],
+        timeout_seconds: float,
+    ) -> list[Point]:
+        ...
 
 
 @dataclass(slots=True)
 class ProjectionMapperClient:
-    geo_to_pixel_points: Callable[[str, Sequence[GeoPoint], float], Awaitable[list[PixelPoint]]]
-    pixel_to_geo_points: Callable[[str, Sequence[PixelPoint], float], Awaitable[list[GeoPoint]]]
+    geo_to_pixel_points: GeoToPixelPointsFn
+    pixel_to_geo_points: PixelToGeoPointsFn
+
+
+class GeoToPixelQuery(BaseModel):
+    image_id: str
+    lon: float
+    lat: float
+
+
+class PixelToGeoQuery(BaseModel):
+    image_id: str
+    x: float
+    y: float
+
+
+class GeoPointPayload(BaseModel):
+    lon: float
+    lat: float
+
+    def to_point(self) -> Point:
+        return Point(self.lon, self.lat)
+
+
+class PixelPointPayload(BaseModel):
+    x: float
+    y: float
+
+    def to_point(self) -> Point:
+        return Point(self.x, self.y)
 
 
 def build_http_projection_mapper(
@@ -27,20 +75,18 @@ def build_http_projection_mapper(
 
     async def geo_to_pixel_points(
         gid: str,
-        points: Sequence[GeoPoint],
+        points: Sequence[Point],
         timeout_seconds: float,
-    ) -> list[PixelPoint]:
-        pixels: list[PixelPoint] = []
+    ) -> list[Point]:
+        pixels: list[Point] = []
         for point in points:
             try:
                 response = await http_client.get(
                     f"{base_url}{g2i_path}",
                     timeout=timeout_seconds,
-                    params={
-                        KEY_IMAGE_ID: gid,
-                        KEY_LON: str(point.lon),
-                        KEY_LAT: str(point.lat),
-                    },
+                    params=_string_params(
+                        GeoToPixelQuery(image_id=gid, lon=point.x, lat=point.y)
+                    ),
                 )
                 response.raise_for_status()
             except Exception as exc:
@@ -49,26 +95,26 @@ def build_http_projection_mapper(
                 ) from exc
 
             pixels.append(
-                PixelPoint.from_mapping(extract_first_object(response.json(), "g2i response"))
+                PixelPointPayload.model_validate(
+                    extract_first_object(response.json(), "g2i response")
+                ).to_point()
             )
         return pixels
 
     async def pixel_to_geo_points(
         gid: str,
-        points: Sequence[PixelPoint],
+        points: Sequence[Point],
         timeout_seconds: float,
-    ) -> list[GeoPoint]:
-        geo_points: list[GeoPoint] = []
+    ) -> list[Point]:
+        geo_points: list[Point] = []
         for point in points:
             try:
                 response = await http_client.get(
                     f"{base_url}{i2g_path}",
                     timeout=timeout_seconds,
-                    params={
-                        KEY_IMAGE_ID: gid,
-                        KEY_X: str(point.x),
-                        KEY_Y: str(point.y),
-                    },
+                    params=_string_params(
+                        PixelToGeoQuery(image_id=gid, x=point.x, y=point.y)
+                    ),
                 )
                 response.raise_for_status()
             except Exception as exc:
@@ -77,7 +123,9 @@ def build_http_projection_mapper(
                 ) from exc
 
             geo_points.append(
-                GeoPoint.from_mapping(extract_first_object(response.json(), "i2g response"))
+                GeoPointPayload.model_validate(
+                    extract_first_object(response.json(), "i2g response")
+                ).to_point()
             )
         return geo_points
 
@@ -85,3 +133,7 @@ def build_http_projection_mapper(
         geo_to_pixel_points=geo_to_pixel_points,
         pixel_to_geo_points=pixel_to_geo_points,
     )
+
+
+def _string_params(model: BaseModel) -> dict[str, str]:
+    return {key: str(value) for key, value in model.model_dump().items()}

@@ -10,11 +10,10 @@ from tile_fetcher import (
     build_http_image_provider,
     build_http_projection_mapper,
 )
-from tile_fetcher.constants import APP_TITLE, APP_VERSION, ROUTE_FETCH_TILES
 from tile_fetcher.http import HttpxGetClient
 from tile_fetcher.settings import TileFetcherSettings, load_settings
 
-logger = logging.getLogger("tile-fetcher.app")
+logger = logging.getLogger(__name__)
 
 
 class FetchTilesPayload(BaseModel):
@@ -35,7 +34,7 @@ def create_app(
     settings: TileFetcherSettings | None = None,
     tile_fetch_service: TileFetchService | None = None,
 ) -> FastAPI:
-    app = FastAPI(title=APP_TITLE, version=APP_VERSION)
+    app = FastAPI(title="tile-fetcher", version="0.1.0")
     app_settings = settings or load_settings()
     service = tile_fetch_service or _build_tile_fetch_service(app_settings)
 
@@ -43,7 +42,7 @@ def create_app(
     async def health() -> dict[str, str]:
         return {"status": "ok"}
 
-    @app.post(ROUTE_FETCH_TILES)
+    @app.post("/tiles/by-point")
     async def fetch_tiles(payload: FetchTilesPayload) -> dict[str, object]:
         logger.info(
             "fetch_tiles request",

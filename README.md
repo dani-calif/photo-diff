@@ -1,4 +1,4 @@
-## Photo Diff
+## Geo Diff
 
 Async FastAPI service for image similarity via embedding cosine similarity.
 
@@ -15,14 +15,14 @@ Async FastAPI service for image similarity via embedding cosine similarity.
 
 ### Project structure
 
-- `src/photo_diff/cli.py`: CLI entrypoint to run uvicorn server.
-- `src/photo_diff/app.py`: FastAPI app and route definitions only.
-- `src/photo_diff/settings.py`: `AppSettings` BaseSettings + env loading.
-- `src/photo_diff/image_input.py`: raw image input normalization/loading helpers.
-- `src/photo_diff/services/comparison.py`: comparison service orchestration.
-- `src/photo_diff/services/service.py`: API-facing orchestration service.
-- `src/photo_diff/services/embedding.py`: HTTP embedding adapter.
-- `src/photo_diff/services/similarity.py`: cosine similarity function.
+- `src/geo_diff/cli.py`: CLI entrypoint to run uvicorn server.
+- `src/geo_diff/app.py`: FastAPI app and route definitions only.
+- `src/geo_diff/settings.py`: `AppSettings` BaseSettings + env loading.
+- `src/geo_diff/image_base64.py`: raw image input normalization/loading helpers.
+- `src/geo_diff/services/comparison.py`: comparison service orchestration.
+- `src/geo_diff/services/service.py`: API-facing orchestration service.
+- `src/geo_diff/services/embedding.py`: HTTP embedding adapter.
+- `src/geo_diff/services/similarity.py`: cosine similarity function.
 - `src/tile_fetcher/app.py`: standalone FastAPI tile fetch service.
 - `src/tile_fetcher/services/provider.py`: image provider integration (`wms/geo`, `wms/light`).
 - `src/tile_fetcher/services/projection.py`: projection mapper integration (`g2i`, `i2g`).
@@ -47,25 +47,25 @@ pip install -e .
 
 Set values in environment or `.env`:
 
-All settings use `PHOTO_DIFF_` env prefix (`case_sensitive=False`, `.env`, UTF-8).
+All settings use `GEO_DIFF_` env prefix (`case_sensitive=False`, `.env`, UTF-8).
 
-- `PHOTO_DIFF_API_URL` (required)
-- `PHOTO_DIFF_SENDING_SYSTEM` (required, sent as `SendingSystem` header)
-- `PHOTO_DIFF_TIMEOUT_SECONDS` (optional, default `30`)
-- `PHOTO_DIFF_TILE_API_BASE_URL` (required)
-- `PHOTO_DIFF_TILE_EXPAND_FACTOR` (optional, default `sqrt(2)`)
-- `PHOTO_DIFF_TILE_IMAGE_PROVIDER_GEO_PATH` (optional, default `/image/wms/geo`)
-- `PHOTO_DIFF_TILE_IMAGE_PROVIDER_LIGHT_PATH` (optional, default `/image/wms/light`)
-- `PHOTO_DIFF_TILE_PROJECTION_MAPPER_G2I_PATH` (optional, default `/image/g2i`)
-- `PHOTO_DIFF_TILE_PROJECTION_MAPPER_I2G_PATH` (optional, default `/image/i2g`)
-- `PHOTO_DIFF_HOST` (optional, default `127.0.0.1`)
-- `PHOTO_DIFF_PORT` (optional, default `8000`)
-- `PHOTO_DIFF_RELOAD` (optional, default `false`)
+- `GEO_DIFF_API_URL` (required)
+- `GEO_DIFF_SENDING_SYSTEM` (required, sent as `SendingSystem` header)
+- `GEO_DIFF_TIMEOUT_SECONDS` (optional, default `30`)
+- `GEO_DIFF_TILE_API_BASE_URL` (required)
+- `GEO_DIFF_TILE_EXPAND_FACTOR` (optional, default `sqrt(2)`)
+- `GEO_DIFF_TILE_IMAGE_PROVIDER_GEO_PATH` (optional, default `/image/wms/geo`)
+- `GEO_DIFF_TILE_IMAGE_PROVIDER_LIGHT_PATH` (optional, default `/image/wms/light`)
+- `GEO_DIFF_TILE_PROJECTION_MAPPER_G2I_PATH` (optional, default `/image/g2i`)
+- `GEO_DIFF_TILE_PROJECTION_MAPPER_I2G_PATH` (optional, default `/image/i2g`)
+- `GEO_DIFF_HOST` (optional, default `127.0.0.1`)
+- `GEO_DIFF_PORT` (optional, default `8000`)
+- `GEO_DIFF_RELOAD` (optional, default `false`)
 
 ### Run server
 
 ```bash
-uv run photo-diff
+uv run geo-diff
 ```
 
 ### Run tile fetcher as a separate service
@@ -114,7 +114,7 @@ curl -X POST http://127.0.0.1:8000/compare-point \
 - Calls `GET /image/g2i?image_id=<id>&lon=<lon>&lat=<lat>` to convert geopoint to strip pixel coordinates
 - Calls `GET /image/i2g?image_id=<id>&x=<x+1>&y=<y>` and `GET /image/i2g?image_id=<id>&x=<x>&y=<y+1>` to estimate local pixel resolution in meters
 - Builds a target pixel envelope from `buffer_size_meters`
-- Expands the target envelope by `PHOTO_DIFF_TILE_EXPAND_FACTOR` (and enforces `sqrt(2)` minimum when `north_aligned=true`)
+- Expands the target envelope by `GEO_DIFF_TILE_EXPAND_FACTOR` (and enforces `sqrt(2)` minimum when `north_aligned=true`)
 - Calls `GET /image/wms/light?image_id=<id>&bbox=<pixel_bbox>` to fetch the light strip image
 - Optionally rotates by `-azimuth` when `north_aligned=true`, then center-crops back from expanded bbox to target bbox
 - Sends each aligned crop to embedding API and returns an `N x N` cosine similarity matrix

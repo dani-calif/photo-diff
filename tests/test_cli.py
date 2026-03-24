@@ -5,7 +5,7 @@ import os
 import unittest
 from unittest.mock import patch
 
-from photo_diff.cli import main
+from geo_diff.cli import main
 
 
 class CliTests(unittest.TestCase):
@@ -20,21 +20,21 @@ class CliTests(unittest.TestCase):
         with patch.dict(
             os.environ,
             {
-                "PHOTO_DIFF_API_URL": "https://api.example.com/embed/image",
-                "PHOTO_DIFF_SENDING_SYSTEM": "photo-diff-tests",
-                "PHOTO_DIFF_TILE_API_BASE_URL": "https://imagery.example.com",
-                "PHOTO_DIFF_HOST": "0.0.0.0",
-                "PHOTO_DIFF_PORT": "9000",
-                "PHOTO_DIFF_RELOAD": "true",
+                "GEO_DIFF_API_URL": "https://api.example.com/embed/image",
+                "GEO_DIFF_SENDING_SYSTEM": "geo-diff-tests",
+                "GEO_DIFF_TILE_API_BASE_URL": "https://imagery.example.com",
+                "GEO_DIFF_HOST": "0.0.0.0",
+                "GEO_DIFF_PORT": "9000",
+                "GEO_DIFF_RELOAD": "true",
             },
             clear=True,
         ):
-            with patch("photo_diff.cli.uvicorn.run", side_effect=fake_runner):
+            with patch("geo_diff.cli.uvicorn.run", side_effect=fake_runner):
                 code = main(stderr=err)
 
         self.assertEqual(code, 0)
         self.assertEqual(err.getvalue(), "")
-        self.assertEqual(called["app"], "photo_diff.app:create_app_from_env")
+        self.assertEqual(called["app"], "geo_diff.app:create_app_from_env")
         self.assertEqual(
             called["kwargs"],
             {"host": "0.0.0.0", "port": 9000, "reload": True, "factory": True},

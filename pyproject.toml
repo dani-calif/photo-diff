@@ -3,7 +3,7 @@ requires = ["hatchling>=1.25.0"]
 build-backend = "hatchling.build"
 
 [project]
-name = "photo-diff"
+name = "geo-diff"
 version = "0.1.0"
 description = "CLI POC for image similarity using embedding APIs"
 readme = "README.md"
@@ -13,12 +13,14 @@ dependencies = [
     "httpx>=0.27.0",
     "pillow>=10.0.0",
     "pydantic-settings>=2.3.0",
+    "rasterio>=1.4.0",
+    "shapely>=2.0.0",
     "uvicorn>=0.30.0",
 ]
 
 [project.scripts]
-photo-diff = "photo_diff.cli:main"
+geo-diff = "geo_diff.cli:main"
 tile-fetcher = "tile_fetcher.cli:main"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/photo_diff", "src/tile_fetcher"]
+packages = ["src/geo_diff", "src/tile_fetcher"]

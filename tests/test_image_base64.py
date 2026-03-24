@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Mapping
 
-from photo_diff.image_input import load_image_as_base64, normalize_image_base64
+from geo_diff.image_base64 import load_image_ref_as_base64, normalize_image_base64
 
 
 @dataclass(slots=True)
@@ -32,7 +32,11 @@ class _FakeHttpClient:
         self.calls: list[tuple[str, Mapping[str, str] | None]] = []
 
     async def get(
-        self, url: str, *, timeout: float, params: Mapping[str, str] | None = None
+        self,
+        url: str,
+        *,
+        timeout: float,
+        params: Mapping[str, str] | None = None,
     ) -> _FakeResponse:
         del timeout
         self.calls.append((url, params))
@@ -41,20 +45,20 @@ class _FakeHttpClient:
         return self._responses.pop(0)
 
 
-class ImageInputTests(unittest.IsolatedAsyncioTestCase):
-    async def test_load_image_as_base64_reads_local_file(self) -> None:
+class ImageBase64Tests(unittest.IsolatedAsyncioTestCase):
+    async def test_load_image_ref_as_base64_reads_local_file(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             file_path = Path(tmp_dir) / "sample.bin"
             file_path.write_bytes(b"abc")
 
-            encoded = await load_image_as_base64(str(file_path))
+            encoded = await load_image_ref_as_base64(str(file_path))
 
         self.assertEqual(encoded, base64.b64encode(b"abc").decode("ascii"))
 
-    async def test_load_image_as_base64_reads_http_url(self) -> None:
+    async def test_load_image_ref_as_base64_reads_http_url(self) -> None:
         client = _FakeHttpClient(responses=[_FakeResponse(content=b"xyz")])
 
-        encoded = await load_image_as_base64(
+        encoded = await load_image_ref_as_base64(
             "https://example.com/image.png",
             timeout_seconds=5.0,
             http_client=client,

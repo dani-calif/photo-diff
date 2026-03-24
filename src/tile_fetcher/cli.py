@@ -6,7 +6,6 @@ from typing import TextIO
 import uvicorn
 from pydantic import ValidationError
 
-from tile_fetcher.constants import UVICORN_APP_FACTORY
 from tile_fetcher.settings import load_settings
 
 
@@ -29,7 +28,7 @@ def main(
         return 2
 
     uvicorn.run(
-        UVICORN_APP_FACTORY,
+        "tile_fetcher.app:create_app_from_env",
         host=settings.host,
         port=settings.port,
         reload=settings.reload,

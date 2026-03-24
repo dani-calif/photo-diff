@@ -3,8 +3,8 @@ from __future__ import annotations
 import logging
 from typing import Protocol, Sequence
 
-from photo_diff.image_input import normalize_image_base64
-from photo_diff.services.comparison import (
+from geo_diff.image_base64 import normalize_image_base64
+from geo_diff.services.comparison import (
     CompareImageMatrixRequest,
     CompareImageMatrixResult,
     CompareImagesRequest,
@@ -13,10 +13,10 @@ from photo_diff.services.comparison import (
 )
 from tile_fetcher import TileFetchService
 
-logger = logging.getLogger("photo-diff.service")
+logger = logging.getLogger(__name__)
 
 
-class PhotoDiffUseCase(Protocol):
+class GeoDiffUseCase(Protocol):
     async def compare_raw_images(
         self,
         *,
@@ -37,7 +37,7 @@ class PhotoDiffUseCase(Protocol):
         ...
 
 
-class PhotoDiffService:
+class GeoDiffService:
     def __init__(
         self,
         *,

@@ -6,7 +6,7 @@ from unittest.mock import patch
 
 from pydantic import ValidationError
 
-from photo_diff.settings import AppSettings, load_settings
+from geo_diff.settings import AppSettings, load_settings
 
 
 class SettingsTests(unittest.TestCase):
@@ -14,22 +14,22 @@ class SettingsTests(unittest.TestCase):
         with patch.dict(
             os.environ,
             {
-                "PHOTO_DIFF_API_URL": "https://api.example.com/embed/image",
-                "PHOTO_DIFF_SENDING_SYSTEM": "photo-diff-tests",
-                "PHOTO_DIFF_TIMEOUT_SECONDS": "12.5",
-                "PHOTO_DIFF_TILE_API_BASE_URL": "https://imagery.example.com",
-                "PHOTO_DIFF_TILE_EXPAND_FACTOR": "1.5",
-                "PHOTO_DIFF_TILE_IMAGE_PROVIDER_GEO_PATH": "/custom/wms/geo",
-                "PHOTO_DIFF_TILE_IMAGE_PROVIDER_LIGHT_PATH": "/custom/wms/light",
-                "PHOTO_DIFF_TILE_PROJECTION_MAPPER_G2I_PATH": "/custom/g2i",
-                "PHOTO_DIFF_TILE_PROJECTION_MAPPER_I2G_PATH": "/custom/i2g",
+                "GEO_DIFF_API_URL": "https://api.example.com/embed/image",
+                "GEO_DIFF_SENDING_SYSTEM": "geo-diff-tests",
+                "GEO_DIFF_TIMEOUT_SECONDS": "12.5",
+                "GEO_DIFF_TILE_API_BASE_URL": "https://imagery.example.com",
+                "GEO_DIFF_TILE_EXPAND_FACTOR": "1.5",
+                "GEO_DIFF_TILE_IMAGE_PROVIDER_GEO_PATH": "/custom/wms/geo",
+                "GEO_DIFF_TILE_IMAGE_PROVIDER_LIGHT_PATH": "/custom/wms/light",
+                "GEO_DIFF_TILE_PROJECTION_MAPPER_G2I_PATH": "/custom/g2i",
+                "GEO_DIFF_TILE_PROJECTION_MAPPER_I2G_PATH": "/custom/i2g",
             },
             clear=True,
         ):
             settings = load_settings()
 
         self.assertEqual(settings.api_url, "https://api.example.com/embed/image")
-        self.assertEqual(settings.sending_system, "photo-diff-tests")
+        self.assertEqual(settings.sending_system, "geo-diff-tests")
         self.assertEqual(settings.timeout_seconds, 12.5)
         self.assertEqual(settings.tile_api_base_url, "https://imagery.example.com")
         self.assertEqual(settings.tile_expand_factor, 1.5)
@@ -42,8 +42,8 @@ class SettingsTests(unittest.TestCase):
         with patch.dict(
             os.environ,
             {
-                "PHOTO_DIFF_API_URL": "https://env.example.com/embed/image",
-                "PHOTO_DIFF_SENDING_SYSTEM": "env-system",
+                "GEO_DIFF_API_URL": "https://env.example.com/embed/image",
+                "GEO_DIFF_SENDING_SYSTEM": "env-system",
             },
             clear=True,
         ):
@@ -77,9 +77,9 @@ class SettingsTests(unittest.TestCase):
         with patch.dict(
             os.environ,
             {
-                "photo_diff_api_url": "https://api.example.com/embed/image",
-                "photo_diff_sending_system": "photo-diff-tests",
-                "photo_diff_tile_api_base_url": "https://imagery.example.com",
+                "geo_diff_api_url": "https://api.example.com/embed/image",
+                "geo_diff_sending_system": "geo-diff-tests",
+                "geo_diff_tile_api_base_url": "https://imagery.example.com",
             },
             clear=True,
         ):

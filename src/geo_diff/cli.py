@@ -6,8 +6,7 @@ from typing import TextIO
 import uvicorn
 from pydantic import ValidationError
 
-from photo_diff.constants import UVICORN_APP_FACTORY
-from photo_diff.settings import load_settings
+from geo_diff.settings import load_settings
 
 
 def main(
@@ -29,7 +28,7 @@ def main(
         return 2
 
     uvicorn.run(
-        UVICORN_APP_FACTORY,
+        "geo_diff.app:create_app_from_env",
         host=settings.host,
         port=settings.port,
         reload=settings.reload,

@@ -9,42 +9,44 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 ROTATION_SAFE_EXPAND_FACTOR = math.sqrt(2.0)
 
 
-class TileFetcherSettings(BaseSettings):
+class AppSettings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_prefix="TILE_FETCHER_",
+        env_prefix="GEO_DIFF_",
         env_file=".env",
         env_file_encoding="utf-8",
         case_sensitive=False,
         extra="ignore",
     )
 
-    api_base_url: str
+    api_url: str
+    sending_system: str
     timeout_seconds: float = Field(default=30.0, gt=0.0)
-    expand_factor: float = Field(
+    tile_api_base_url: str
+    tile_expand_factor: float = Field(
         default=ROTATION_SAFE_EXPAND_FACTOR,
         ge=ROTATION_SAFE_EXPAND_FACTOR,
     )
-    image_provider_geo_path: str = "/image/wms/geo"
-    image_provider_light_path: str = "/image/wms/light"
-    projection_mapper_g2i_path: str = "/image/g2i"
-    projection_mapper_i2g_path: str = "/image/i2g"
+    tile_image_provider_geo_path: str = "/image/wms/geo"
+    tile_image_provider_light_path: str = "/image/wms/light"
+    tile_projection_mapper_g2i_path: str = "/image/g2i"
+    tile_projection_mapper_i2g_path: str = "/image/i2g"
     host: str = "127.0.0.1"
-    port: int = Field(default=8010, ge=1, le=65535)
+    port: int = Field(default=8000, ge=1, le=65535)
     reload: bool = False
 
     @field_validator(
-        "image_provider_geo_path",
-        "image_provider_light_path",
-        "projection_mapper_g2i_path",
-        "projection_mapper_i2g_path",
+        "tile_image_provider_geo_path",
+        "tile_image_provider_light_path",
+        "tile_projection_mapper_g2i_path",
+        "tile_projection_mapper_i2g_path",
     )
     @classmethod
     def _validate_slash_prefixed_path(cls, value: str) -> str:
         if not value.startswith("/"):
-            raise ValueError("tile-fetcher route paths must start with '/'.")
+            raise ValueError("tile route paths must start with '/'.")
         return value
 
 
-def load_settings() -> TileFetcherSettings:
-    settings_factory = cast(Any, TileFetcherSettings)
+def load_settings() -> AppSettings:
+    settings_factory = cast(Any, AppSettings)
     return settings_factory()
