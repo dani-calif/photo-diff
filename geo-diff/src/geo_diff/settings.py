@@ -1,9 +1,14 @@
 from __future__ import annotations
 
+from enum import StrEnum
 from typing import Any, cast
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+class EmbedderBackend(StrEnum):
+    HTTP = "http"
+    INTERNAL = "internal"
 
 
 class AppSettings(BaseSettings):
@@ -17,6 +22,7 @@ class AppSettings(BaseSettings):
 
     api_url: str
     sending_system: str
+    embedder_backend: EmbedderBackend = EmbedderBackend.HTTP
     timeout_seconds: float = Field(default=30.0, gt=0.0)
     tile_api_base_url: str
     tile_image_provider_light_path: str = "/image/wms/light"

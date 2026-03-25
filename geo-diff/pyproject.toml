@@ -23,7 +23,16 @@ dependencies = [
 [project.scripts]
 geo-diff = "geo_diff.cli:main"
 
+[dependency-groups]
+internal = [
+    "geo-diff-internal",
+]
+
+[tool.uv]
+default-groups = ["internal"]
+
 [tool.uv.sources]
+geo-diff-internal = { path = "internal" }
 tile-fetcher = { path = "../tile-fetcher" }
 
 [tool.hatch.build.targets.wheel]

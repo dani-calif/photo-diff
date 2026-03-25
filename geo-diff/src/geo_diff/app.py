@@ -7,7 +7,8 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
 from geo_diff.services.comparison import ImageComparisonService
-from geo_diff.services.embedding import EmbeddingApiError, ImageEmbeddingService
+from geo_diff.services.embedder_factory import build_image_embedder
+from geo_diff.services.embedding import EmbeddingApiError
 from geo_diff.services.service import GeoDiffService
 from geo_diff.services.similarity import CosineSimilarityService
 from geo_diff.settings import AppSettings, load_settings
@@ -112,11 +113,7 @@ def _build_geo_diff_service(
 
 
 def _build_image_comparison_service(settings: AppSettings) -> ImageComparisonService:
-    embedding_service = ImageEmbeddingService(
-        api_url=settings.api_url,
-        sending_system=settings.sending_system,
-        timeout_seconds=settings.timeout_seconds,
-    )
+    embedding_service = build_image_embedder(settings)
     similarity_service = CosineSimilarityService()
     return ImageComparisonService(embedding_service, similarity_service)
 

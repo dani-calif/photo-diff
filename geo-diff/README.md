@@ -17,6 +17,7 @@ Settings use the `GEO_DIFF_` prefix:
 
 - `GEO_DIFF_API_URL`
 - `GEO_DIFF_SENDING_SYSTEM`
+- `GEO_DIFF_EMBEDDER_BACKEND` (`http` or `internal`)
 - `GEO_DIFF_TIMEOUT_SECONDS`
 - `GEO_DIFF_TILE_API_BASE_URL`
 - `GEO_DIFF_TILE_IMAGE_PROVIDER_LIGHT_PATH`
@@ -34,7 +35,10 @@ uv sync
 uv run geo-diff
 ```
 
-Because `tile-fetcher` is declared as a local path dependency, `uv sync` here also installs the sibling `tile-fetcher` package.
+Because `tile-fetcher` is declared as a local path dependency, `uv sync` here also installs the sibling `tile-fetcher` package. If `internal/` exists, the default `internal` dependency group also installs `geo-diff-internal` from the local `internal` package.
+
+If you need an internal embedder adapter, install the internal adapter package into the same
+environment and set `GEO_DIFF_EMBEDDER_BACKEND=internal`.
 
 ## Test
 

@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 from pydantic import ValidationError
 
-from geo_diff.settings import AppSettings
+from geo_diff.settings import AppSettings, EmbedderBackend
 
 
 def _load_settings_without_dotenv() -> AppSettings:
@@ -33,10 +33,26 @@ class SettingsTests(unittest.TestCase):
 
         self.assertEqual(settings.api_url, "https://api.example.com/embed/image")
         self.assertEqual(settings.sending_system, "geo-diff-tests")
+        self.assertEqual(settings.embedder_backend, EmbedderBackend.HTTP)
         self.assertEqual(settings.timeout_seconds, 12.5)
         self.assertEqual(settings.tile_api_base_url, "https://imagery.example.com")
         self.assertEqual(settings.tile_image_provider_light_path, "/custom/wms/light")
         self.assertEqual(settings.tile_projection_mapper_g2i_path, "/custom/g2i")
+
+    def test_loads_optional_embedder_backend(self) -> None:
+        with patch.dict(
+            os.environ,
+            {
+                "GEO_DIFF_API_URL": "https://api.example.com/embed/image",
+                "GEO_DIFF_SENDING_SYSTEM": "geo-diff-tests",
+                "GEO_DIFF_EMBEDDER_BACKEND": "internal",
+                "GEO_DIFF_TILE_API_BASE_URL": "https://imagery.example.com",
+            },
+            clear=True,
+        ):
+            settings = _load_settings_without_dotenv()
+
+        self.assertEqual(settings.embedder_backend, EmbedderBackend.INTERNAL)
 
     def test_overrides_take_precedence(self) -> None:
         with patch.dict(
