@@ -1,37 +1,49 @@
 from __future__ import annotations
 
 import unittest
+from dataclasses import dataclass
 from typing import Sequence
 
 from fastapi.testclient import TestClient
 
 from geo_diff.app import create_app
-from geo_diff.services.comparison import CompareImageMatrixResult, CompareImagesResult
+from geo_diff.services.comparison import ImageComparisonService
+from geo_diff.services.embedding import ImageEmbedder
+from geo_diff.services.service import GeoDiffService
 from geo_diff.settings import AppSettings
+from tile_fetcher import ImageProviderClient, ProjectionMapperClient, TileFetchService
+from shapely.geometry import Point
 
 
-class _FakeGeoDiffService:
-    def __init__(self, *, error: Exception | None = None) -> None:
-        self.error = error
-        self.last_compare_raw: tuple[str, str] | None = None
-        self.last_compare_point: tuple[list[str], float, float, float, bool] | None = None
+@dataclass(slots=True)
+class _FakeEmbedder(ImageEmbedder):
+    embeddings: list[list[float]] | None = None
+    error: Exception | None = None
+    calls: list[list[str]] | None = None
 
-    async def compare_raw_images(
-        self,
-        *,
-        image_a: str,
-        image_b: str,
-    ) -> CompareImagesResult:
-        self.last_compare_raw = (image_a, image_b)
+    async def embed_images(self, images_base64: Sequence[str]) -> list[list[float]]:
+        if self.calls is not None:
+            self.calls.append(list(images_base64))
         if self.error is not None:
             raise self.error
-        return CompareImagesResult(
-            image_a="YQ==",
-            image_b="Yg==",
-            cosine_similarity=0.9,
+        if self.embeddings is None:
+            raise AssertionError("embeddings must be provided when no error is configured")
+        return self.embeddings
+
+
+class _FakeTileFetchService(TileFetchService):
+    def __init__(self, images: list[str]) -> None:
+        self.images = images
+        self.last_call: tuple[list[str], float, float, float, bool] | None = None
+        super().__init__(
+            image_provider=ImageProviderClient(fetch_image=self._unused_fetch_image),
+            projection_mapper=ProjectionMapperClient(
+                geo_to_pixel_points=self._unused_geo_to_pixel_points
+            ),
+            timeout_seconds=1.0,
         )
 
-    async def compare_point(
+    async def fetch_tiles_at_point_as_base64(
         self,
         *,
         image_ids: Sequence[str],
@@ -39,20 +51,20 @@ class _FakeGeoDiffService:
         lat: float,
         buffer_size_meters: float,
         north_aligned: bool = True,
-    ) -> CompareImageMatrixResult:
-        self.last_compare_point = (
-            list(image_ids),
-            lon,
-            lat,
-            buffer_size_meters,
-            north_aligned,
-        )
-        if self.error is not None:
-            raise self.error
-        return CompareImageMatrixResult(
-            image_ids=list(image_ids),
-            cosine_similarity_matrix=[[1.0, 0.8], [0.8, 1.0]],
-        )
+    ) -> list[str]:
+        self.last_call = (list(image_ids), lon, lat, buffer_size_meters, north_aligned)
+        return self.images
+
+    async def _unused_fetch_image(self, gid: str, pixel_bbox, timeout_seconds: float):
+        raise AssertionError(f"Unexpected call: fetch_image({gid}, {pixel_bbox}, {timeout_seconds})")
+
+    async def _unused_geo_to_pixel_points(
+        self,
+        gid: str,
+        points: Sequence[Point],
+        timeout_seconds: float,
+    ) -> list[Point]:
+        raise AssertionError(f"Unexpected call: geo_to_pixel_points({gid}, {points}, {timeout_seconds})")
 
 
 class RouteTests(unittest.TestCase):
@@ -64,9 +76,26 @@ class RouteTests(unittest.TestCase):
             tile_api_base_url="https://imagery.example.com",
         )
 
+    @staticmethod
+    def _build_service(
+        *,
+        embeddings: list[list[float]] | None = None,
+        error: Exception | None = None,
+        tile_images: list[str] | None = None,
+    ) -> tuple[GeoDiffService, _FakeEmbedder, _FakeTileFetchService]:
+        embedder = _FakeEmbedder(embeddings=embeddings, error=error, calls=[])
+        tile_fetcher = _FakeTileFetchService(tile_images or ["YQ==", "Yg=="])
+        service = GeoDiffService(
+            comparison_service=ImageComparisonService(embedder),
+            tile_fetch_service=tile_fetcher,
+        )
+        return service, embedder, tile_fetcher
+
     def test_compare_raw_images_returns_similarity(self) -> None:
-        fake_service = _FakeGeoDiffService()
-        app = create_app(geo_diff_service=fake_service, settings=self._settings())
+        service, embedder, _ = self._build_service(
+            embeddings=[[1.0, 0.0], [1.0, 0.0]],
+        )
+        app = create_app(geo_diff_service=service, settings=self._settings())
         client = TestClient(app)
 
         response = client.post(
@@ -75,12 +104,12 @@ class RouteTests(unittest.TestCase):
         )
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()["cosine_similarity"], 0.9)
-        self.assertEqual(fake_service.last_compare_raw, ("YQ==", "Yg=="))
+        self.assertEqual(response.json()["cosine_similarity"], 1.0)
+        self.assertEqual(embedder.calls, [["YQ==", "Yg=="]])
 
     def test_compare_raw_images_returns_400_for_runtime_error(self) -> None:
-        fake_service = _FakeGeoDiffService(error=ValueError("bad image"))
-        app = create_app(geo_diff_service=fake_service, settings=self._settings())
+        service, _, _ = self._build_service(error=ValueError("bad image"))
+        app = create_app(geo_diff_service=service, settings=self._settings())
         client = TestClient(app)
 
         response = client.post(
@@ -92,8 +121,10 @@ class RouteTests(unittest.TestCase):
         self.assertEqual(response.json()["detail"], "bad image")
 
     def test_compare_point_returns_matrix_and_passes_default_alignment(self) -> None:
-        fake_service = _FakeGeoDiffService()
-        app = create_app(geo_diff_service=fake_service, settings=self._settings())
+        service, embedder, tile_fetcher = self._build_service(
+            embeddings=[[1.0, 0.0], [0.0, 1.0]],
+        )
+        app = create_app(geo_diff_service=service, settings=self._settings())
         client = TestClient(app)
 
         response = client.post(
@@ -108,15 +139,18 @@ class RouteTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["image_ids"], ["img-1", "img-2"])
-        self.assertEqual(response.json()["cosine_similarity_matrix"][0][1], 0.8)
+        self.assertEqual(response.json()["cosine_similarity_matrix"][0][1], 0.0)
         self.assertEqual(
-            fake_service.last_compare_point,
+            tile_fetcher.last_call,
             (["img-1", "img-2"], 34.0, 31.0, 15.0, True),
         )
+        self.assertEqual(embedder.calls, [["YQ==", "Yg=="]])
 
     def test_compare_point_passes_alignment_flag(self) -> None:
-        fake_service = _FakeGeoDiffService()
-        app = create_app(geo_diff_service=fake_service, settings=self._settings())
+        service, _, tile_fetcher = self._build_service(
+            embeddings=[[1.0, 0.0], [0.0, 1.0]],
+        )
+        app = create_app(geo_diff_service=service, settings=self._settings())
         client = TestClient(app)
 
         response = client.post(
@@ -132,7 +166,7 @@ class RouteTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(
-            fake_service.last_compare_point,
+            tile_fetcher.last_call,
             (["img-1", "img-2"], 34.0, 31.0, 15.0, False),
         )
 

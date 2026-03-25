@@ -4,7 +4,7 @@ import logging
 from typing import Any, Protocol, Sequence
 
 import httpx
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
 
@@ -13,9 +13,19 @@ class EmbeddingApiError(RuntimeError):
     """Raised when embedding API calls fail or return invalid payloads."""
 
 
+class ImageEmbedder(Protocol):
+    async def embed_images(self, images_base64: Sequence[str]) -> list[list[float]]:
+        ...
+
+
 class HttpResponse(Protocol):
-    status_code: int
-    text: str
+    @property
+    def status_code(self) -> int:
+        ...
+
+    @property
+    def text(self) -> str:
+        ...
 
     def json(self) -> Any:
         ...
@@ -53,50 +63,7 @@ class EmbedImageRequest(BaseModel):
         return self.model_dump()
 
 
-class EmbeddingCandidate(BaseModel):
-    embedding: list[float] | None = None
-    vector: list[float] | None = None
-
-    @field_validator("embedding", "vector", mode="before")
-    @classmethod
-    def _validate_vector(cls, value: Any) -> list[float] | None:
-        return _to_float_list_or_none(value)
-
-    def resolved(self) -> list[float] | None:
-        return self.embedding or self.vector
-
-
-class EmbeddingApiResponse(BaseModel):
-    embedding: list[float] | None = None
-    vector: list[float] | None = None
-    data: list[EmbeddingCandidate] = Field(default_factory=list)
-
-    @classmethod
-    def from_body(cls, body: Any) -> "EmbeddingApiResponse":
-        if not isinstance(body, dict):
-            raise EmbeddingApiError("Embedding API response must be a JSON object.")
-        try:
-            return cls.model_validate(body)
-        except Exception as exc:
-            raise EmbeddingApiError(f"Invalid embedding API response: {exc}") from exc
-
-    def extract_embedding(self) -> list[float]:
-        candidates: list[EmbeddingCandidate] = [
-            EmbeddingCandidate(embedding=self.embedding, vector=self.vector),
-            *self.data,
-        ]
-        for candidate in candidates:
-            vector = candidate.resolved()
-            if vector is not None:
-                return vector
-
-        raise EmbeddingApiError(
-            "Could not find embedding in API response. "
-            "Supported keys: embedding, vector, data[0].embedding, data[0].vector."
-        )
-
-
-class ImageEmbeddingService:
+class ImageEmbeddingService(ImageEmbedder):
     def __init__(
         self,
         api_url: str,
@@ -153,17 +120,14 @@ class ImageEmbeddingService:
             except ValueError as exc:
                 raise EmbeddingApiError("Embedding API returned non-JSON response.") from exc
 
-            parsed = EmbeddingApiResponse.from_body(body)
-            output.append(parsed.extract_embedding())
+            output.append(_parse_embedding_vector(body))
 
         return output
 
 
-def _to_float_list_or_none(value: Any) -> list[float] | None:
-    if value is None:
-        return None
+def _parse_embedding_vector(value: Any) -> list[float]:
     if not isinstance(value, list) or not value:
-        raise EmbeddingApiError("Embedding is missing or not a non-empty list.")
+        raise EmbeddingApiError("Embedding API response must be a non-empty JSON list.")
     try:
         return [float(item) for item in value]
     except (TypeError, ValueError) as exc:

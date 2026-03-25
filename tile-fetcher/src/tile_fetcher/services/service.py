@@ -8,6 +8,7 @@ from io import BytesIO
 from typing import Sequence
 
 from PIL import Image
+from pyproj import CRS, Transformer
 from shapely.geometry import Point
 
 from tile_fetcher.services.models import PointQuad, XYXYBox
@@ -127,23 +128,60 @@ class TileFetchService:
 
 
 def _build_geo_quad(*, center: Point, buffer_size_meters: float) -> PointQuad:
+    half_size_meters = buffer_size_meters / 2.0
+    projected_crs = _local_metric_crs(center)
+    to_projected = Transformer.from_crs("EPSG:4326", projected_crs, always_xy=True)
+    to_geographic = Transformer.from_crs(projected_crs, "EPSG:4326", always_xy=True)
+    center_x, center_y = to_projected.transform(center.x, center.y)
+
     return PointQuad(
-        upper_left=_offset_geo_point(center=center, east_meters=-buffer_size_meters, north_meters=buffer_size_meters),
-        lower_left=_offset_geo_point(center=center, east_meters=-buffer_size_meters, north_meters=-buffer_size_meters),
-        lower_right=_offset_geo_point(center=center, east_meters=buffer_size_meters, north_meters=-buffer_size_meters),
-        upper_right=_offset_geo_point(center=center, east_meters=buffer_size_meters, north_meters=buffer_size_meters),
+        upper_left=_projected_offset_to_geo(
+            center_x=center_x,
+            center_y=center_y,
+            east_meters=-half_size_meters,
+            north_meters=half_size_meters,
+            to_geographic=to_geographic,
+        ),
+        lower_left=_projected_offset_to_geo(
+            center_x=center_x,
+            center_y=center_y,
+            east_meters=-half_size_meters,
+            north_meters=-half_size_meters,
+            to_geographic=to_geographic,
+        ),
+        lower_right=_projected_offset_to_geo(
+            center_x=center_x,
+            center_y=center_y,
+            east_meters=half_size_meters,
+            north_meters=-half_size_meters,
+            to_geographic=to_geographic,
+        ),
+        upper_right=_projected_offset_to_geo(
+            center_x=center_x,
+            center_y=center_y,
+            east_meters=half_size_meters,
+            north_meters=half_size_meters,
+            to_geographic=to_geographic,
+        ),
     )
 
 
-def _offset_geo_point(*, center: Point, east_meters: float, north_meters: float) -> Point:
-    earth_radius_meters = 6_371_000.0
-    latitude_radians = math.radians(center.y)
-    lat_offset = math.degrees(north_meters / earth_radius_meters)
-    cos_latitude = math.cos(latitude_radians)
-    if math.isclose(cos_latitude, 0.0):
-        raise ValueError("Cannot offset longitude at the poles.")
-    lon_offset = math.degrees(east_meters / (earth_radius_meters * cos_latitude))
-    return Point(center.x + lon_offset, center.y + lat_offset)
+def _projected_offset_to_geo(
+    *,
+    center_x: float,
+    center_y: float,
+    east_meters: float,
+    north_meters: float,
+    to_geographic: Transformer,
+) -> Point:
+    lon, lat = to_geographic.transform(center_x + east_meters, center_y + north_meters)
+    return Point(lon, lat)
+
+
+def _local_metric_crs(point: Point) -> CRS:
+    return CRS.from_proj4(
+        f"+proj=aeqd +lat_0={point.y} +lon_0={point.x} +datum=WGS84 +units=m +no_defs"
+    )
 
 
 def _render_tile_crop(

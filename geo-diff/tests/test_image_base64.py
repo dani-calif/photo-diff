@@ -7,7 +7,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Mapping
 
-from geo_diff.image_base64 import load_image_ref_as_base64, normalize_image_base64
+from geo_diff.image_base64 import (
+    ImageFetchHttpClient,
+    load_image_ref_as_base64,
+    normalize_image_base64,
+)
 
 
 @dataclass(slots=True)
@@ -26,7 +30,7 @@ class _FakeResponse:
         return self.body
 
 
-class _FakeHttpClient:
+class _FakeHttpClient(ImageFetchHttpClient):
     def __init__(self, responses: list[_FakeResponse]) -> None:
         self._responses = responses
         self.calls: list[tuple[str, Mapping[str, str] | None]] = []

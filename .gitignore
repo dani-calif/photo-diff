@@ -40,3 +40,4 @@ patches/
 demo_output/
 
 uv.lock
+.python-version

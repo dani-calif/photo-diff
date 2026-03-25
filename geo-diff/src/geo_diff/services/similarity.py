@@ -3,7 +3,6 @@ from __future__ import annotations
 import math
 from typing import Sequence
 
-
 class CosineSimilarityService:
     def cosine_similarity(
         self, vector_a: Sequence[float], vector_b: Sequence[float]

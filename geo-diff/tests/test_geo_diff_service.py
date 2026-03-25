@@ -7,37 +7,21 @@ from typing import Sequence
 from shapely.geometry import Point
 
 from geo_diff.services.comparison import (
-    CompareImageMatrixRequest,
-    CompareImageMatrixResult,
-    CompareImagesRequest,
-    CompareImagesResult,
+    ImageComparisonService,
 )
+from geo_diff.services.embedding import ImageEmbedder
 from geo_diff.services.service import GeoDiffService
 from tile_fetcher import ImageProviderClient, ProjectionMapperClient, TileFetchService
 
 
 @dataclass(slots=True)
-class _FakeComparisonService:
-    last_compare_images: CompareImagesRequest | None = None
-    last_compare_matrix: CompareImageMatrixRequest | None = None
+class _FakeEmbedder(ImageEmbedder):
+    embeddings: list[list[float]]
+    calls: list[list[str]]
 
-    async def compare_images(self, request: CompareImagesRequest) -> CompareImagesResult:
-        self.last_compare_images = request
-        return CompareImagesResult(
-            image_a=request.image_a,
-            image_b=request.image_b,
-            cosine_similarity=0.9,
-        )
-
-    async def compare_image_matrix(
-        self,
-        request: CompareImageMatrixRequest,
-    ) -> CompareImageMatrixResult:
-        self.last_compare_matrix = request
-        return CompareImageMatrixResult(
-            image_ids=request.image_ids,
-            cosine_similarity_matrix=[[1.0, 0.8], [0.8, 1.0]],
-        )
+    async def embed_images(self, images_base64: Sequence[str]) -> list[list[float]]:
+        self.calls.append(list(images_base64))
+        return self.embeddings
 
 
 class _FakeTileFetchService(TileFetchService):
@@ -79,9 +63,12 @@ class _FakeTileFetchService(TileFetchService):
 
 class GeoDiffServiceTests(unittest.IsolatedAsyncioTestCase):
     async def test_compare_raw_images_normalizes_input(self) -> None:
-        comparison = _FakeComparisonService()
+        embedder = _FakeEmbedder(
+            embeddings=[[1.0, 0.0], [1.0, 0.0]],
+            calls=[],
+        )
         service = GeoDiffService(
-            comparison_service=comparison,
+            comparison_service=ImageComparisonService(embedder),
             tile_fetch_service=_FakeTileFetchService(images=[]),
         )
 
@@ -90,14 +77,17 @@ class GeoDiffServiceTests(unittest.IsolatedAsyncioTestCase):
             image_b="Yg==",
         )
 
-        self.assertEqual(result.cosine_similarity, 0.9)
-        self.assertEqual(comparison.last_compare_images, CompareImagesRequest("YQ==", "Yg=="))
+        self.assertEqual(result.cosine_similarity, 1.0)
+        self.assertEqual(embedder.calls, [["YQ==", "Yg=="]])
 
     async def test_compare_point_uses_tile_fetch_service(self) -> None:
-        comparison = _FakeComparisonService()
+        embedder = _FakeEmbedder(
+            embeddings=[[1.0, 0.0], [0.0, 1.0]],
+            calls=[],
+        )
         tile_fetcher = _FakeTileFetchService(images=["YQ==", "Yg=="])
         service = GeoDiffService(
-            comparison_service=comparison,
+            comparison_service=ImageComparisonService(embedder),
             tile_fetch_service=tile_fetcher,
         )
 
@@ -110,14 +100,12 @@ class GeoDiffServiceTests(unittest.IsolatedAsyncioTestCase):
         )
 
         self.assertEqual(result.image_ids, ["img-1", "img-2"])
+        self.assertEqual(result.cosine_similarity_matrix, [[1.0, 0.0], [0.0, 1.0]])
         self.assertEqual(
             tile_fetcher.last_call,
             (["img-1", "img-2"], 34.0, 31.0, 12.5, False),
         )
-        self.assertEqual(
-            comparison.last_compare_matrix,
-            CompareImageMatrixRequest(image_ids=["img-1", "img-2"], images=["YQ==", "Yg=="]),
-        )
+        self.assertEqual(embedder.calls, [["YQ==", "Yg=="]])
 
 
 if __name__ == "__main__":

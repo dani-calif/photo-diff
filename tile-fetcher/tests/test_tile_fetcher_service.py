@@ -7,6 +7,7 @@ from io import BytesIO
 from typing import Sequence
 
 from PIL import Image, ImageDraw
+from pyproj import CRS, Transformer
 from shapely.geometry import Point
 
 from tile_fetcher import (
@@ -105,6 +106,48 @@ class TileFetchServiceTests(unittest.IsolatedAsyncioTestCase):
         rendered = _decode_image(encoded[0])
         self.assertEqual(rendered.size, (32, 32))
 
+    async def test_buffer_size_meters_is_the_full_square_side_length(self) -> None:
+        provider = _FakeImageProvider(
+            template_image_bytes=_make_gradient_image(),
+            fetch_image_calls=[],
+        )
+        captured_geo_points: list[GeometryPoint] = []
+
+        async def capture_geo_to_pixel_points(
+            gid: str,
+            points: Sequence[GeometryPoint],
+            timeout_seconds: float,
+        ) -> list[GeometryPoint]:
+            del gid, timeout_seconds
+            captured_geo_points.extend(points)
+            return [
+                Point(0.0, 0.0),
+                Point(0.0, 20.0),
+                Point(20.0, 20.0),
+                Point(20.0, 0.0),
+            ]
+
+        service = TileFetchService(
+            image_provider=ImageProviderClient(fetch_image=provider.fetch_image),
+            projection_mapper=ProjectionMapperClient(
+                geo_to_pixel_points=capture_geo_to_pixel_points,
+            ),
+            timeout_seconds=10.0,
+        )
+
+        await service.fetch_tiles_at_point_as_base64(
+            image_ids=["img-1"],
+            lon=34.7818,
+            lat=32.0853,
+            buffer_size_meters=20.0,
+        )
+
+        self.assertEqual(len(captured_geo_points), 4)
+        top_edge_meters = _distance_meters(captured_geo_points[0], captured_geo_points[3])
+        left_edge_meters = _distance_meters(captured_geo_points[0], captured_geo_points[1])
+        self.assertAlmostEqual(top_edge_meters, 20.0, delta=0.25)
+        self.assertAlmostEqual(left_edge_meters, 20.0, delta=0.25)
+
     async def test_north_aligned_flag_changes_output(self) -> None:
         source_bytes = _make_split_color_image()
 
@@ -183,6 +226,20 @@ def _resize_image(image_bytes: bytes, *, width: int, height: int) -> bytes:
     out = BytesIO()
     resized.save(out, format="PNG")
     return out.getvalue()
+
+
+def _distance_meters(a: GeometryPoint, b: GeometryPoint) -> float:
+    projected_crs = _utm_crs_for_point(a)
+    to_projected = Transformer.from_crs("EPSG:4326", projected_crs, always_xy=True)
+    ax, ay = to_projected.transform(a.x, a.y)
+    bx, by = to_projected.transform(b.x, b.y)
+    return ((bx - ax) ** 2 + (by - ay) ** 2) ** 0.5
+
+
+def _utm_crs_for_point(point: GeometryPoint) -> CRS:
+    zone = int((point.x + 180.0) / 6.0) + 1
+    epsg = 32600 + zone if point.y >= 0.0 else 32700 + zone
+    return CRS.from_epsg(epsg)
 
 
 if __name__ == "__main__":

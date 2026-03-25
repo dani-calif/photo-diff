@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Protocol, Sequence
+from typing import Sequence
 
 from geo_diff.image_base64 import normalize_image_base64
 from geo_diff.services.comparison import (
@@ -9,39 +9,18 @@ from geo_diff.services.comparison import (
     CompareImageMatrixResult,
     CompareImagesRequest,
     CompareImagesResult,
-    ImageComparisonUseCase,
+    ImageComparisonService,
 )
 from tile_fetcher import TileFetchService
 
 logger = logging.getLogger(__name__)
 
 
-class GeoDiffUseCase(Protocol):
-    async def compare_raw_images(
-        self,
-        *,
-        image_a: str,
-        image_b: str,
-    ) -> CompareImagesResult:
-        ...
-
-    async def compare_point(
-        self,
-        *,
-        image_ids: Sequence[str],
-        lon: float,
-        lat: float,
-        buffer_size_meters: float,
-        north_aligned: bool = True,
-    ) -> CompareImageMatrixResult:
-        ...
-
-
 class GeoDiffService:
     def __init__(
         self,
         *,
-        comparison_service: ImageComparisonUseCase,
+        comparison_service: ImageComparisonService,
         tile_fetch_service: TileFetchService,
     ) -> None:
         self._comparison_service = comparison_service

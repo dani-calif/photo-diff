@@ -2,7 +2,11 @@ from __future__ import annotations
 
 import unittest
 
-from geo_diff.services.embedding import EmbeddingApiError, ImageEmbeddingService
+from geo_diff.services.embedding import (
+    EmbeddingApiError,
+    HttpTransport,
+    ImageEmbeddingService,
+)
 
 
 class FakeResponse:
@@ -15,7 +19,7 @@ class FakeResponse:
         return self._body
 
 
-class FakeTransport:
+class FakeTransport(HttpTransport):
     def __init__(self, responses: list[FakeResponse]) -> None:
         self.responses = responses
         self.calls: list[dict[str, object]] = []
@@ -45,8 +49,8 @@ class ImageEmbeddingServiceTests(unittest.IsolatedAsyncioTestCase):
     async def test_embed_images_builds_expected_request_and_parses_response(self) -> None:
         transport = FakeTransport(
             [
-                FakeResponse(status_code=200, body={"embedding": [1, 2]}),
-                FakeResponse(status_code=200, body={"embedding": [3, 4]}),
+                FakeResponse(status_code=200, body=[1, 2]),
+                FakeResponse(status_code=200, body=[3, 4]),
             ]
         )
 

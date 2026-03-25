@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from abc import ABC, abstractmethod
 from typing import Any, Mapping, Protocol
 
 import httpx
@@ -17,14 +18,15 @@ class HttpResponseLike(Protocol):
         ...
 
 
-class HttpClient(Protocol):
+class HttpClient(ABC):
+    @abstractmethod
     async def get(
         self, url: str, *, timeout: float, params: Mapping[str, str] | None = None
     ) -> HttpResponseLike:
         ...
 
 
-class HttpxGetClient:
+class HttpxGetClient(HttpClient):
     async def get(
         self, url: str, *, timeout: float, params: Mapping[str, str] | None = None
     ) -> HttpResponseLike:

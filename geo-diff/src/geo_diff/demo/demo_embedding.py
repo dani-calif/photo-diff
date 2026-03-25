@@ -5,9 +5,10 @@ import io
 from typing import Sequence
 
 from PIL import Image, ImageFilter, ImageStat
+from geo_diff.services.embedding import ImageEmbedder
 
 
-class DemoImageEmbeddingService:
+class DemoImageEmbeddingService(ImageEmbedder):
     async def embed_images(self, images_base64: Sequence[str]) -> list[list[float]]:
         return [_embed_image(image_b64) for image_b64 in images_base64]
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from abc import ABC, abstractmethod
 import asyncio
 import base64
 import binascii
@@ -21,7 +22,8 @@ class ImageFetchResponse(Protocol):
         ...
 
 
-class ImageFetchHttpClient(Protocol):
+class ImageFetchHttpClient(ABC):
+    @abstractmethod
     async def get(
         self,
         url: str,
@@ -32,7 +34,7 @@ class ImageFetchHttpClient(Protocol):
         ...
 
 
-class HttpxImageFetchClient:
+class HttpxImageFetchClient(ImageFetchHttpClient):
     async def get(
         self,
         url: str,

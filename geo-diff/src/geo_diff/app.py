@@ -6,9 +6,9 @@ from dataclasses import asdict
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
-from geo_diff.services.comparison import ImageComparisonService, ImageComparisonUseCase
+from geo_diff.services.comparison import ImageComparisonService
 from geo_diff.services.embedding import EmbeddingApiError, ImageEmbeddingService
-from geo_diff.services.service import GeoDiffService, GeoDiffUseCase
+from geo_diff.services.service import GeoDiffService
 from geo_diff.services.similarity import CosineSimilarityService
 from geo_diff.settings import AppSettings, load_settings
 from tile_fetcher import (
@@ -38,8 +38,8 @@ class ComparePointPayload(BaseModel):
 def create_app(
     *,
     settings: AppSettings | None = None,
-    geo_diff_service: GeoDiffUseCase | None = None,
-    comparison_service: ImageComparisonUseCase | None = None,
+    geo_diff_service: GeoDiffService | None = None,
+    comparison_service: ImageComparisonService | None = None,
     tile_fetch_service: TileFetchService | None = None,
 ) -> FastAPI:
     app = FastAPI(title="geo-diff", version="0.1.0")
@@ -102,9 +102,9 @@ def create_app_from_env() -> FastAPI:
 def _build_geo_diff_service(
     *,
     settings: AppSettings,
-    comparison_service: ImageComparisonUseCase | None = None,
+    comparison_service: ImageComparisonService | None = None,
     tile_fetch_service: TileFetchService | None = None,
-) -> GeoDiffUseCase:
+) -> GeoDiffService:
     return GeoDiffService(
         comparison_service=comparison_service or _build_image_comparison_service(settings),
         tile_fetch_service=tile_fetch_service or _build_tile_fetch_service(settings),

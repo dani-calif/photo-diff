@@ -2,11 +2,17 @@ from __future__ import annotations
 
 import os
 import unittest
+from typing import Any, cast
 from unittest.mock import patch
 
 from pydantic import ValidationError
 
-from geo_diff.settings import AppSettings, load_settings
+from geo_diff.settings import AppSettings
+
+
+def _load_settings_without_dotenv() -> AppSettings:
+    settings_factory = cast(Any, AppSettings)
+    return settings_factory(_env_file=None)
 
 
 class SettingsTests(unittest.TestCase):
@@ -23,7 +29,7 @@ class SettingsTests(unittest.TestCase):
             },
             clear=True,
         ):
-            settings = load_settings()
+            settings = _load_settings_without_dotenv()
 
         self.assertEqual(settings.api_url, "https://api.example.com/embed/image")
         self.assertEqual(settings.sending_system, "geo-diff-tests")
@@ -59,7 +65,7 @@ class SettingsTests(unittest.TestCase):
     def test_api_url_is_required(self) -> None:
         with patch.dict(os.environ, {}, clear=True):
             with self.assertRaises(ValidationError):
-                load_settings()
+                _load_settings_without_dotenv()
 
     def test_environment_keys_are_case_insensitive(self) -> None:
         with patch.dict(
@@ -71,7 +77,7 @@ class SettingsTests(unittest.TestCase):
             },
             clear=True,
         ):
-            settings = load_settings()
+            settings = _load_settings_without_dotenv()
         self.assertEqual(settings.api_url, "https://api.example.com/embed/image")
 
 

@@ -5,6 +5,8 @@ import os
 import unittest
 from unittest.mock import patch
 
+from pydantic import ValidationError
+
 from geo_diff.cli import main
 
 
@@ -48,7 +50,11 @@ class CliTests(unittest.TestCase):
 
     def test_main_returns_config_error_when_api_url_missing(self) -> None:
         err = io.StringIO()
-        with patch.dict(os.environ, {}, clear=True):
+        validation_error = ValidationError.from_exception_data(
+            "AppSettings",
+            [{"type": "missing", "loc": ("api_url",), "input": {}}],
+        )
+        with patch("geo_diff.cli.load_settings", side_effect=validation_error):
             code = main(stderr=err)
 
         self.assertEqual(code, 2)
