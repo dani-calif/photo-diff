@@ -10,8 +10,6 @@ from tile_fetcher.services import (
 from tile_fetcher.utils import (
     ImageProviderClient,
     ProjectionMapperClient,
-    build_http_image_provider,
-    build_http_projection_mapper,
 )
 
 __all__ = [
@@ -23,6 +21,4 @@ __all__ = [
     "TileFetchError",
     "TileFetchService",
     "XYXYBox",
-    "build_http_image_provider",
-    "build_http_projection_mapper",
 ]

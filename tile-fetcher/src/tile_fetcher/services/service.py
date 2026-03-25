@@ -71,6 +71,73 @@ class TileFetchService:
         logger.info("fetched tiles", extra={"image_ids_count": len(output)})
         return output
 
+    async def strip_pixel_bbox(
+        self,
+        *,
+        gid: str,
+        x_min: int,
+        y_min: int,
+        x_max: int,
+        y_max: int,
+    ) -> str:
+        bbox = XYXYBox(xmin=x_min, ymin=y_min, xmax=x_max, ymax=y_max)
+        if bbox.width <= 0.0 or bbox.height <= 0.0:
+            raise ValueError("pixel bbox must define a positive area.")
+        image_bytes = await self._require_strip_pixel_bbox()(
+            gid.strip(),
+            bbox,
+            self._timeout_seconds,
+        )
+        return base64.b64encode(image_bytes).decode("ascii")
+
+    async def strip_rotation_by_view_angle_pixel(
+        self,
+        *,
+        gid: str,
+        x_center_pixel: int,
+        y_center_pixel: float,
+        tile_size_pixels: float,
+        max_output_width: int,
+        max_output_height: int,
+    ) -> bytes:
+        if tile_size_pixels <= 0.0:
+            raise ValueError("tile_size_pixels must be greater than 0.")
+        if max_output_width <= 0 or max_output_height <= 0:
+            raise ValueError("max output dimensions must be greater than 0.")
+        return await self._require_strip_rotation_by_view_angle_pixel()(
+            gid.strip(),
+            x_center_pixel,
+            y_center_pixel,
+            tile_size_pixels,
+            max_output_width,
+            max_output_height,
+            self._timeout_seconds,
+        )
+
+    async def strip_rotation_by_view_angle_geo(
+        self,
+        *,
+        gid: str,
+        x_center_geo: float,
+        y_center_geo: float,
+        tile_size_meters: int,
+        max_output_width: int,
+        max_output_height: int,
+    ) -> bytes:
+        if tile_size_meters <= 0:
+            raise ValueError("tile_size_meters must be greater than 0.")
+        if max_output_width <= 0 or max_output_height <= 0:
+            raise ValueError("max output dimensions must be greater than 0.")
+        return await self._require_strip_rotation_by_view_angle_geo()(
+            gid.strip(),
+            x_center_geo,
+            y_center_geo,
+            tile_size_meters,
+            max_output_width,
+            max_output_height,
+            self._timeout_seconds,
+        )
+
     async def _fetch_image_bytes_for_id(
         self,
         *,
@@ -125,6 +192,23 @@ class TileFetchService:
             lower_right=pixel_points[2],
             upper_right=pixel_points[3],
         )
+
+    def _require_strip_pixel_bbox(self):
+        if self._image_provider.strip_pixel_bbox is None:
+            raise NotImplementedError("strip_pixel_bbox is not configured.")
+        return self._image_provider.strip_pixel_bbox
+
+    def _require_strip_rotation_by_view_angle_pixel(self):
+        if self._image_provider.strip_rotation_by_view_angle_pixel is None:
+            raise NotImplementedError(
+                "strip_rotation_by_view_angle_pixel is not configured."
+            )
+        return self._image_provider.strip_rotation_by_view_angle_pixel
+
+    def _require_strip_rotation_by_view_angle_geo(self):
+        if self._image_provider.strip_rotation_by_view_angle_geo is None:
+            raise NotImplementedError("strip_rotation_by_view_angle_geo is not configured.")
+        return self._image_provider.strip_rotation_by_view_angle_geo
 
 
 def _build_geo_quad(*, center: Point, buffer_size_meters: float) -> PointQuad:

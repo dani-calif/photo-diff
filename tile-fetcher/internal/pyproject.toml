@@ -1,0 +1,13 @@
+[build-system]
+requires = ["hatchling>=1.25.0"]
+build-backend = "hatchling.build"
+
+[project]
+name = "tile-fetcher-internal"
+version = "0.1.0"
+description = "Internal adapters and dependencies for tile-fetcher"
+requires-python = ">=3.12"
+dependencies = []
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/tile_fetcher_internal"]

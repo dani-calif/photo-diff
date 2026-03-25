@@ -193,6 +193,110 @@ class TileFetchServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(_decode_image(north_aligned_image).size, (32, 32))
         self.assertEqual(_decode_image(raw_orientation_image).size, (40, 40))
 
+    async def test_strip_pixel_bbox_returns_base64_image(self) -> None:
+        provider = _FakeImageProvider(
+            template_image_bytes=_make_gradient_image(),
+            fetch_image_calls=[],
+        )
+
+        async def strip_pixel_bbox(
+            gid: str,
+            pixel_bbox: XYXYBox,
+            timeout_seconds: float,
+        ) -> bytes:
+            return (await provider.fetch_image(gid, pixel_bbox, timeout_seconds)).image_bytes
+
+        service = TileFetchService(
+            image_provider=ImageProviderClient(
+                fetch_image=provider.fetch_image,
+                strip_pixel_bbox=strip_pixel_bbox,
+            ),
+            projection_mapper=ProjectionMapperClient(
+                geo_to_pixel_points=lambda *_args, **_kwargs: None  # type: ignore[arg-type]
+            ),
+            timeout_seconds=10.0,
+        )
+
+        encoded = await service.strip_pixel_bbox(
+            gid="img-1",
+            x_min=10,
+            y_min=20,
+            x_max=50,
+            y_max=70,
+        )
+
+        self.assertEqual(_decode_image(encoded).size, (40, 50))
+
+    async def test_strip_rotation_routes_delegate_to_provider(self) -> None:
+        provider = _FakeImageProvider(
+            template_image_bytes=_make_gradient_image(),
+            fetch_image_calls=[],
+        )
+
+        async def strip_rotation_by_view_angle_pixel(
+            gid: str,
+            x_center_pixel: int,
+            y_center_pixel: float,
+            tile_size_pixels: float,
+            max_output_width: int,
+            max_output_height: int,
+            timeout_seconds: float,
+        ) -> bytes:
+            del gid, x_center_pixel, y_center_pixel, tile_size_pixels, timeout_seconds
+            return _resize_image(
+                provider.template_image_bytes,
+                width=max_output_width,
+                height=max_output_height,
+            )
+
+        async def strip_rotation_by_view_angle_geo(
+            gid: str,
+            x_center_geo: float,
+            y_center_geo: float,
+            tile_size_meters: int,
+            max_output_width: int,
+            max_output_height: int,
+            timeout_seconds: float,
+        ) -> bytes:
+            del gid, x_center_geo, y_center_geo, tile_size_meters, timeout_seconds
+            return _resize_image(
+                provider.template_image_bytes,
+                width=max_output_width,
+                height=max_output_height,
+            )
+
+        service = TileFetchService(
+            image_provider=ImageProviderClient(
+                fetch_image=provider.fetch_image,
+                strip_rotation_by_view_angle_pixel=strip_rotation_by_view_angle_pixel,
+                strip_rotation_by_view_angle_geo=strip_rotation_by_view_angle_geo,
+            ),
+            projection_mapper=ProjectionMapperClient(
+                geo_to_pixel_points=lambda *_args, **_kwargs: None  # type: ignore[arg-type]
+            ),
+            timeout_seconds=10.0,
+        )
+
+        pixel_image = await service.strip_rotation_by_view_angle_pixel(
+            gid="img-1",
+            x_center_pixel=100,
+            y_center_pixel=200.0,
+            tile_size_pixels=128.0,
+            max_output_width=64,
+            max_output_height=32,
+        )
+        geo_image = await service.strip_rotation_by_view_angle_geo(
+            gid="img-1",
+            x_center_geo=34.0,
+            y_center_geo=31.0,
+            tile_size_meters=250,
+            max_output_width=48,
+            max_output_height=24,
+        )
+
+        self.assertEqual(_decode_image(base64.b64encode(pixel_image).decode("ascii")).size, (64, 32))
+        self.assertEqual(_decode_image(base64.b64encode(geo_image).decode("ascii")).size, (48, 24))
+
 
 def _decode_image(image_b64: str) -> Image.Image:
     return Image.open(BytesIO(base64.b64decode(image_b64))).convert("RGB")
