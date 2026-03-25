@@ -73,7 +73,6 @@ class RouteTests(unittest.TestCase):
         return AppSettings(
             api_url="https://api.example.com/embed/image",
             sending_system="geo-diff-tests",
-            tile_api_base_url="https://imagery.example.com",
         )
 
     @staticmethod

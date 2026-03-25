@@ -15,7 +15,6 @@ class EmbedderFactoryTests(unittest.TestCase):
             api_url="https://api.example.com/embed/image",
             sending_system="geo-diff-tests",
             embedder_backend=embedder_backend,
-            tile_api_base_url="https://imagery.example.com",
         )
 
     def test_build_image_embedder_uses_http_backend_by_default(self) -> None:

@@ -12,13 +12,9 @@ from geo_diff.services.embedding import EmbeddingApiError
 from geo_diff.services.service import GeoDiffService
 from geo_diff.services.similarity import CosineSimilarityService
 from geo_diff.settings import AppSettings, load_settings
-from tile_fetcher import (
-    TileFetchError,
-    TileFetchService,
-    build_http_image_provider,
-    build_http_projection_mapper,
-)
-from tile_fetcher.http import HttpxGetClient
+from tile_fetcher import TileFetchError, TileFetchService
+from tile_fetcher.services.factory import build_tile_fetch_service
+from tile_fetcher.settings import TileFetcherSettings
 
 logger = logging.getLogger(__name__)
 
@@ -119,17 +115,4 @@ def _build_image_comparison_service(settings: AppSettings) -> ImageComparisonSer
 
 
 def _build_tile_fetch_service(settings: AppSettings) -> TileFetchService:
-    http_client = HttpxGetClient()
-    return TileFetchService(
-        image_provider=build_http_image_provider(
-            api_base_url=settings.tile_api_base_url,
-            light_path=settings.tile_image_provider_light_path,
-            http_client=http_client,
-        ),
-        projection_mapper=build_http_projection_mapper(
-            api_base_url=settings.tile_api_base_url,
-            g2i_path=settings.tile_projection_mapper_g2i_path,
-            http_client=http_client,
-        ),
-        timeout_seconds=settings.timeout_seconds,
-    )
+    return build_tile_fetch_service(TileFetcherSettings(timeout_seconds=settings.timeout_seconds))

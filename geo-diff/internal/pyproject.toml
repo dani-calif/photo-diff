@@ -7,7 +7,12 @@ name = "geo-diff-internal"
 version = "0.1.0"
 description = "Internal adapters and dependencies for geo-diff"
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "tile-fetcher-internal",
+]
+
+[tool.uv.sources]
+tile-fetcher-internal = { path = "../../tile-fetcher/internal" }
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/geo_diff_internal"]
